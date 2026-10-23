@@ -5,16 +5,17 @@ const DEFAULTS = {
   currentUser: null,
   operations: [],
   conclusions: ['CT des bacs et du Tri', 'Dépôts sauvages'],
-  addresses: [],
   controls: [], // { id, date:'YYYY-MM-DD', time:'HH:MM', address, num, operation, conclusion, user }
   email: '',
+  theme: 'auto', // auto | light | dark
 };
 
 let state = load();
 
 function load() {
   try {
-    return { ...structuredClone(DEFAULTS), ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+    const { addresses, ...saved } = JSON.parse(localStorage.getItem(KEY) || '{}'); // `addresses` : ancienne clé abandonnée
+    return { ...structuredClone(DEFAULTS), ...saved };
   } catch {
     return structuredClone(DEFAULTS);
   }
@@ -63,4 +64,8 @@ export function controlsOf(date, user) {
 
 export function clearControls(date, user) {
   set({ controls: state.controls.filter(c => !(c.date === date && c.user === user)) });
+}
+
+export function datesOf(user) {
+  return [...new Set(state.controls.filter(c => c.user === user).map(c => c.date))].sort().reverse();
 }

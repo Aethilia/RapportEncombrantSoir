@@ -1,4 +1,4 @@
-const CACHE = 'encombrants-v2';
+const CACHE = 'encombrants-v3';
 const FILES = ['./', 'index.html', 'style.css', 'src/app.js', 'src/store.js', 'src/export.js',
   'vendor/exceljs.min.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo.png'];
 
