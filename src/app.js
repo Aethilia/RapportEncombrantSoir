@@ -24,6 +24,7 @@ const PATHS = {
   swap: '<path d="M7 7h13l-3-3M17 17H4l3 3"/>',
   cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 9.5 4 4 0 0 1 17.5 18z"/>',
   download: '<path d="M12 3v12M7 11l5 5 5-5M4 20h16"/>',
+  box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5a4 4 0 0 0 8 0h5"/>',
 };
 const ic = (n, size = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[n]}</svg>`;
@@ -83,7 +84,7 @@ function controlCard(c, withDelete = true, author = false) {
 }
 
 function manager(list, label, placeholder) {
-  const items = store.get()[list];
+  const items = list === 'users' ? store.get().users : store.listOf(list);
   return `<div class="section-title"><span>${label}</span></div>
     <div class="card panel">
       <div class="addrow"><input id="in-${list}" placeholder="${placeholder}" enterkeyhint="done" autocomplete="off">
@@ -99,11 +100,25 @@ function tabs() {
   return `<nav class="tabs">${t('home', 'home', 'Accueil')}${t('history', 'history', 'Historique')}${t('lists', 'list', 'Listes')}${t('users', 'users', 'Utilisateurs')}</nav>`;
 }
 
-function hero(inner = '', compact = false) {
+function typeChip() {
+  const { type, currentUser } = store.get();
+  if (!type || !currentUser) return '';
+  return `<button class="type-chip" data-act="change-type" aria-label="Changer de type de contrôle">${ic('swap', 15)}${esc(store.TYPES[type].label)}</button>`;
+}
+
+function hero(inner = '', compact = false, chip = true) {
   const s = store.get();
   return `<div class="hero ${compact ? 'compact' : ''}"><div class="hero-top">
     <img class="logo" src="icons/logo.png" alt="Métropole Nice Côte d’Azur">
-    <div class="hero-actions">${themeBtn()}${s.currentUser ? `<button class="avatar" data-act="switch" aria-label="Changer d’utilisateur">${esc(initials(s.currentUser))}</button>` : ''}</div></div>${inner}</div>`;
+    <div class="hero-actions">${themeBtn()}${s.currentUser ? `<button class="avatar" data-act="switch" aria-label="Changer d’utilisateur">${esc(initials(s.currentUser))}</button>` : ''}</div></div>${inner}${chip ? typeChip() : ''}</div>`;
+}
+
+function renderTypePicker() {
+  const s = store.get();
+  const card = (id, icon) => `<button class="card type-card" data-type="${id}"><span class="type-ic">${ic(icon, 30)}</span>
+    <span class="type-txt"><b>${esc(store.TYPES[id].label)}</b><small>Rapport « Contrôle ${esc(store.TYPES[id].label)} Soir »</small></span>${ic('chev', 22)}</button>`;
+  app.innerHTML = hero(`<div class="greet"><small>${greeting()}</small><h1>${esc(s.currentUser)}</h1><div class="date">Quel type de contrôle ?</div></div>`, false, false) +
+    `<main class="pull">${card('enc', 'box')}${card('om', 'trash')}</main>`;
 }
 
 function renderHome() {
@@ -173,7 +188,7 @@ function renderUsers() {
 
 function renderUserPicker() {
   const { users } = store.get();
-  app.innerHTML = hero(`<h1 class="title">Contrôle Encombrants Soir</h1><div class="date" style="opacity:.85;margin-top:4px;position:relative;z-index:1">Qui utilise l’appli ?</div>`, true) +
+  app.innerHTML = hero(`<h1 class="title">Contrôle du soir</h1><div class="date" style="opacity:.85;margin-top:4px;position:relative;z-index:1">Qui utilise l’appli ?</div>`, true) +
     `<main class="top">${users.map(u => `<div class="card user-card"><button class="go" data-user="${esc(u)}"><span class="avatar">${esc(initials(u))}</span>${esc(u)}</button>
       <button class="del" data-del="users" data-v="${esc(u)}" aria-label="Supprimer">${ic('trash', 20)}</button></div>`).join('')}
       <div class="section-title"><span>Ajouter un utilisateur</span></div>
@@ -197,15 +212,17 @@ function renderWizard() {
       <label for="w-num">N° (optionnel)</label><input id="w-num" inputmode="numeric" value="${esc(w.num)}" autocomplete="off"></div>`;
     ok = !!w.address;
   } else if (w.step === 2) {
-    body = `<div class="card panel"><label>Opération (constat)</label>${s.operations.length ? pick(s.operations, 'operation') : '<p class="hint">Aucune opération en liste (onglet Listes).</p>'}
-      <label for="w-op">Ou saisir manuellement</label><input id="w-op" value="${s.operations.includes(w.operation) ? '' : esc(w.operation)}" placeholder="Autre opération" autocomplete="off"></div>`;
+    const ops = store.listOf('operations');
+    body = `<div class="card panel"><label>Opération (constat)</label>${ops.length ? pick(ops, 'operation') : '<p class="hint">Aucune opération en liste (onglet Listes).</p>'}
+      <label for="w-op">Ou saisir manuellement</label><input id="w-op" value="${ops.includes(w.operation) ? '' : esc(w.operation)}" placeholder="Autre opération" autocomplete="off"></div>`;
     ok = !!w.operation;
   } else {
-    body = `<div class="card panel"><label>Conclusion (observation / action)</label>${s.conclusions.length ? pick(s.conclusions, 'conclusion') : '<p class="hint">Aucune conclusion en liste (onglet Listes).</p>'}
-      <label for="w-cc">Ou saisir manuellement</label><input id="w-cc" value="${s.conclusions.includes(w.conclusion) ? '' : esc(w.conclusion)}" placeholder="Autre conclusion" autocomplete="off"></div>`;
+    const ccs = store.listOf('conclusions');
+    body = `<div class="card panel"><label>Conclusion (observation / action)</label>${ccs.length ? pick(ccs, 'conclusion') : '<p class="hint">Aucune conclusion en liste (onglet Listes).</p>'}
+      <label for="w-cc">Ou saisir manuellement</label><input id="w-cc" value="${ccs.includes(w.conclusion) ? '' : esc(w.conclusion)}" placeholder="Autre conclusion" autocomplete="off"></div>`;
     ok = !!w.conclusion;
   }
-  app.innerHTML = hero(bar, true) + `<main class="top">${body}</main>
+  app.innerHTML = hero(bar, true, false) + `<main class="top">${body}</main>
     <div class="nav2"><button class="btn alt" data-act="back">${ic('back', 20)}${w.step ? 'Retour' : 'Annuler'}</button>
     <button class="btn" data-act="next" ${ok ? '' : 'disabled'}>${w.step === 3 ? ic('check', 20) + 'Enregistrer' : 'Suivant' + ic('chev', 20)}</button></div>`;
 }
@@ -215,6 +232,7 @@ function render() {
   const s = store.get();
   if (sync.enabled && !s.team) return renderTeamJoin();
   if (!s.currentUser) return renderUserPicker();
+  if (!store.TYPES[s.type]) return renderTypePicker();
   if (wizard) return renderWizard();
   ({ history: renderHistory, lists: renderLists, users: renderUsers }[tab] ?? renderHome)();
 }
@@ -234,11 +252,11 @@ function syncWizardInputs() {
 
 /* ---------- Fin : génération du fichier Excel ---------- */
 async function generateReport(date = store.todayISO()) {
-  const { currentUser } = store.get();
+  const { currentUser, type } = store.get();
   const controls = store.controlsOf(date, currentUser);
   if (!controls.length) return toast(`Aucun contrôle le ${frDate(date)}`);
   try {
-    await downloadFile(await buildFile({ date, user: currentUser, controls }));
+    await downloadFile(await buildFile({ date, user: currentUser, controls, type }));
     toast('Fichier Excel généré');
   } catch (e) {
     console.error(e);
@@ -252,7 +270,8 @@ app.addEventListener('click', e => {
   if (!t) return;
   const d = t.dataset;
   if (d.tab) { tab = d.tab; window.scrollTo(0, 0); return render(); }
-  if (d.user) { store.set({ currentUser: d.user }); tab = 'home'; return render(); }
+  if (d.user) { store.set({ currentUser: d.user, type: '' }); tab = 'home'; return render(); }
+  if (d.type) { store.set({ type: d.type }); tab = 'home'; return render(); }
   if (d.add) {
     const input = document.getElementById('in-' + d.add);
     store.addTo(d.add, input.value);
@@ -281,7 +300,8 @@ app.addEventListener('click', e => {
     case 'leave':
       if (confirm('Quitter l’équipe ? Les données déjà reçues restent sur ce téléphone.')) { store.set({ team: '' }); location.reload(); }
       return;
-    case 'switch': store.set({ currentUser: null }); tab = 'home'; return render();
+    case 'switch': store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
+    case 'change-type': store.set({ type: '' }); tab = 'home'; return render();
     case 'start': wizard = { step: 0, time: nowHM(), address: '', num: '', operation: '', conclusion: '' }; return render();
     case 'back': syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
     case 'next':

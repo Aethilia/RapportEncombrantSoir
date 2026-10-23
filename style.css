@@ -182,3 +182,16 @@ dialog h2 { margin: 0; font-size: 22px; }
 .dot.offline { background: #e0a100; }
 .dot.error { background: var(--danger); }
 .tag.who { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--fg); }
+
+/* ---------- Type de contrôle ---------- */
+.type-chip { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 7px 12px; border-radius: 99px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.16); color: #fff; font: inherit; font-size: 13.5px; font-weight: 650; cursor: pointer; backdrop-filter: blur(6px); }
+.type-chip:active { background: rgba(255,255,255,.28); }
+main.pull .type-card { display: flex; align-items: center; gap: 16px; width: 100%; padding: 22px 18px; text-align: left; font: inherit; color: var(--fg); cursor: pointer; transition: transform .12s; }
+.type-card:active { transform: scale(.98); }
+.type-ic { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, var(--brand-2), var(--brand)); color: #fff; flex: none; }
+:root[data-theme="dark"] .type-ic { color: var(--brand-ink); }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] .type-ic { color: var(--brand-ink); } }
+.type-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.type-txt b { font-size: 20px; }
+.type-txt small { color: var(--muted); font-size: 13.5px; }
+.type-card > .ic { color: var(--muted); }

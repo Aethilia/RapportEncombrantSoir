@@ -1,6 +1,6 @@
 {
-  "name": "Contrôle Encombrants Soir",
-  "short_name": "Encombrants Soir",
+  "name": "Contrôle du soir",
+  "short_name": "Contrôle soir",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#ffffff",

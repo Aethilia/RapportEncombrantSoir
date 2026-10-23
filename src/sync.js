@@ -24,8 +24,8 @@ export async function start(team, { onChange, onStatus }) {
     const log = e => { console.error(e); onStatus?.('error'); };
 
     const sharedSettings = () => {
-      const { users, operations, conclusions, email } = store.get();
-      return { users, operations, conclusions, email };
+      const { users, lists } = store.get();
+      return { users, lists };
     };
 
     // Première connexion d'une équipe vide : on y envoie les données déjà présentes sur ce téléphone.
@@ -51,9 +51,10 @@ export async function start(team, { onChange, onStatus }) {
       onStatus?.(snap.metadata.fromCache ? 'offline' : 'ok');
       if (!snap.exists() || snap.metadata.hasPendingWrites) return;
       const d = snap.data();
-      store.applyRemote({
-        users: d.users ?? [], operations: d.operations ?? [], conclusions: d.conclusions ?? [], email: d.email ?? '',
-      });
+      // Ancien format (avant les types) : `operations`/`conclusions` à plat = encombrants.
+      const legacy = d.lists ? null : { enc: { operations: d.operations ?? [], conclusions: d.conclusions ?? [] }, om: store.get().lists.om };
+      store.applyRemote({ users: d.users ?? [], lists: store.normalizeLists(d.lists ?? legacy) });
+      if (legacy) store.hooks.settings?.(); // on publie le nouveau format
       onChange?.();
     }, log);
 
