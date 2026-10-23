@@ -17,13 +17,7 @@ export async function buildWorkbook({ date, user, controls }) {
     const id = wb.addImage({ buffer: buf, extension: 'png' });
     ws.addImage(id, { tl: { col: 0.1, row: 0.2 }, ext: { width: 150, height: 56 } });
   } catch { /* logo indisponible : on continue sans */ }
-  ws.mergeCells('C1:E1');
-  ws.getCell('C1').value = 'Direction générale adjointe – Pôle services techniques';
-  ws.mergeCells('C2:E2');
-  ws.getCell('C2').value = 'Direction de la collecte et de la gestion des déchets';
-  for (const a of ['C1', 'C2']) ws.getCell(a).alignment = { vertical: 'middle', wrapText: true };
-  ws.getRow(1).height = 24;
-  ws.getRow(2).height = 24;
+  for (const r of [1, 2]) ws.getRow(r).height = 24;
   ws.getRow(3).height = 14;
 
   ws.mergeCells('A5:E5');
