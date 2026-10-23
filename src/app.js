@@ -16,7 +16,7 @@ function toast(msg) {
 
 function header(sub) {
   const s = store.get();
-  return `<header><small>NICE CÔTE D’AZUR</small><h1>Contrôle Pizzorno</h1>
+  return `<header><img class="logo" src="icons/logo.png" alt="Métropole Nice Côte d’Azur"><h1>Contrôle Encombrants Soir</h1>
     <div class="row between"><span class="chip">${esc(sub ?? '👤 ' + (s.currentUser ?? ''))}</span>
     ${sub === undefined ? '<button class="chip" data-act="switch">Changer</button>' : ''}</div></header>`;
 }
@@ -60,7 +60,7 @@ function render() {
 
 function renderUserPicker() {
   const { users } = store.get();
-  app.innerHTML = `<header><small>NICE CÔTE D’AZUR</small><h1>Qui utilise l’appli ?</h1></header>
+  app.innerHTML = `<header><img class="logo" src="icons/logo.png" alt="Métropole Nice Côte d’Azur"><h1>Contrôle Encombrants Soir</h1><div class="chip">Qui utilise l’appli ?</div></header>
     <main><div class="list">${users.map(u => `<div class="item"><button class="btn" style="flex:1" data-user="${esc(u)}">${esc(u)}</button>
       <button class="x" data-del="users" data-v="${esc(u)}" aria-label="Supprimer">✕</button></div>`).join('')}</div>
       <h2>Ajouter un utilisateur</h2>

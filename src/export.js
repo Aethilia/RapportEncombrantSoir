@@ -12,18 +12,23 @@ export async function buildWorkbook({ date, user, controls }) {
   });
   ws.columns = [{ width: 10 }, { width: 30 }, { width: 8 }, { width: 38 }, { width: 30 }];
 
-  ws.mergeCells('A1:E1');
-  ws.getCell('A1').value = 'NICE CÔTE D’AZUR';
-  ws.getCell('A1').font = { bold: true, size: 16 };
-  ws.mergeCells('A2:E2');
-  ws.getCell('A2').value = 'Direction générale adjointe – Pôle services techniques';
-  ws.mergeCells('A3:E3');
-  ws.getCell('A3').value = 'Direction de la collecte et de la gestion des déchets';
-  ws.getRow(1).height = 26;
+  try {
+    const buf = await (await fetch('icons/logo.png')).arrayBuffer();
+    const id = wb.addImage({ buffer: buf, extension: 'png' });
+    ws.addImage(id, { tl: { col: 0.1, row: 0.2 }, ext: { width: 150, height: 56 } });
+  } catch { /* logo indisponible : on continue sans */ }
+  ws.mergeCells('C1:E1');
+  ws.getCell('C1').value = 'Direction générale adjointe – Pôle services techniques';
+  ws.mergeCells('C2:E2');
+  ws.getCell('C2').value = 'Direction de la collecte et de la gestion des déchets';
+  for (const a of ['C1', 'C2']) ws.getCell(a).alignment = { vertical: 'middle', wrapText: true };
+  ws.getRow(1).height = 24;
+  ws.getRow(2).height = 24;
+  ws.getRow(3).height = 14;
 
   ws.mergeCells('A5:E5');
   const t = ws.getCell('A5');
-  t.value = `CONTRÔLE DES PRESTATIONS DE PIZZORNO DU ${frDate(date)}   DEM`;
+  t.value = `CONTRÔLE ENCOMBRANTS SOIR DU ${frDate(date)}`;
   t.font = { bold: true, size: 12 };
   t.alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getRow(5).height = 24;
@@ -71,14 +76,14 @@ export async function buildWorkbook({ date, user, controls }) {
 export async function buildFile(data) {
   const wb = await buildWorkbook(data);
   const buf = await wb.xlsx.writeBuffer();
-  const name = `Controle_Pizzorno_${data.date}.xlsx`;
+  const name = `Controle_Encombrants_Soir_${data.date}.xlsx`;
   const file = new File([buf], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   return { file, name };
 }
 
 // Partage natif (Mail/Gmail avec pièce jointe) ; repli : téléchargement + mailto.
 export async function sendFile({ file, name }, { email, date, user }) {
-  const subject = `Contrôle des prestations Pizzorno du ${frDate(date)}`;
+  const subject = `Contrôle encombrants soir du ${frDate(date)}`;
   const text = `Bonjour,\n\nVeuillez trouver ci-joint le récapitulatif du contrôle du ${frDate(date)}.\n\n${user}`;
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {

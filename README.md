@@ -1,6 +1,6 @@
 # Rapport Encombrants Soir
 
-PWA (iPhone + Android) de contrôle des points de collecte. Génère un Excel au format de la fiche « Contrôle des prestations de Pizzorno » et l'envoie par mail (partage natif).
+PWA (iPhone + Android) de contrôle des points de collecte. Génère un Excel au format de la fiche « Contrôle encombrants soir » et l'envoie par mail (partage natif).
 
 ## Lancer en local
     python3 -m http.server 8080   # puis http://localhost:8080

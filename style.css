@@ -1,5 +1,5 @@
 :root {
-  --green: #1e8e3e; --green-dark: #166a2e; --bg: #fff; --fg: #1b1b1b;
+  --green: #004f94; --green-dark: #003a6e; --bg: #fff; --fg: #1b1b1b;
   --muted: #666; --line: #dcdcdc; --soft: #f3f6f4; --danger: #c62828;
 }
 * { box-sizing: border-box; }
@@ -37,9 +37,11 @@ nav.tabs button.on { color: var(--green); font-weight: 700; box-shadow: inset 0 
 .progress i.on { background: var(--green); }
 .pick { display: flex; flex-direction: column; gap: 8px; max-height: 46dvh; overflow: auto; }
 .pick button { text-align: left; padding: 14px; font-size: 18px; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; }
-.pick button.on { border-color: var(--green); background: #e8f5ec; font-weight: 700; }
+.pick button.on { border-color: var(--green); background: #e6eef7; font-weight: 700; }
 .empty { color: var(--muted); text-align: center; padding: 12px; }
 dialog { border: 0; border-radius: 16px; padding: 20px; width: min(92vw, 460px); }
 dialog::backdrop { background: rgba(0,0,0,.5); }
 dialog form { display: flex; flex-direction: column; gap: 14px; }
 .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: #263238; color: #fff; padding: 12px 18px; border-radius: 12px; z-index: 9; }
+
+.logo { height: 44px; display: block; margin-bottom: 6px; }
