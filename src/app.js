@@ -310,5 +310,10 @@ app.addEventListener('keydown', e => {
   if (input) app.querySelector(`[data-add="${input.id.slice(3)}"]`).click();
 });
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Nouvelle version installée : on recharge pour l'afficher (sauf pendant un contrôle en cours).
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !wizard) location.reload(); });
+}
 render();

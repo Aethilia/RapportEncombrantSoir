@@ -1,4 +1,4 @@
-const CACHE = 'encombrants-v3';
+const CACHE = 'encombrants-v4';
 const FILES = ['./', 'index.html', 'style.css', 'src/app.js', 'src/store.js', 'src/export.js',
   'vendor/exceljs.min.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo.png'];
 
@@ -9,7 +9,16 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
+// Réseau d'abord (version à jour), cache en secours hors-ligne.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+  e.respondWith(
+    fetch(e.request, { cache: 'no-cache' })
+      .then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
+  );
 });
