@@ -3,7 +3,7 @@ const KEY = 'rapport-encombrants-v1';
 const DEFAULTS = {
   users: [],
   currentUser: null,
-  operations: ['Appel Pizzorno', 'Point soirée Dem'],
+  operations: [],
   conclusions: ['CT des bacs et du Tri', 'Dépôts sauvages'],
   addresses: [],
   controls: [], // { id, date:'YYYY-MM-DD', time:'HH:MM', address, num, operation, conclusion, user }
