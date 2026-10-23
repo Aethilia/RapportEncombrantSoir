@@ -195,3 +195,13 @@ main.pull .type-card { display: flex; align-items: center; gap: 16px; width: 100
 .type-txt b { font-size: 20px; }
 .type-txt small { color: var(--muted); font-size: 13.5px; }
 .type-card > .ic { color: var(--muted); }
+
+/* ---------- Photos ---------- */
+.vh { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.icon-soft { width: 46px; height: 46px; border-radius: 14px; border: 0; background: var(--soft); color: var(--brand); display: grid; place-items: center; cursor: pointer; }
+.icon-soft:active { transform: scale(.94); }
+.thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.thumb { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: var(--soft); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-x { position: absolute; top: 5px; right: 5px; width: 26px; height: 26px; border: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.tag.photo-tag { display: inline-flex; align-items: center; gap: 4px; }

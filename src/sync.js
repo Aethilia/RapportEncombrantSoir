@@ -1,5 +1,6 @@
 import { firebaseConfig } from './firebase-config.js';
 import * as store from './store.js';
+import * as photos from './photos.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 export const enabled = !!firebaseConfig.apiKey;
@@ -15,12 +16,13 @@ export async function start(team, { onChange, onStatus }) {
       import(`${SDK}/firebase-app.js`),
       import(`${SDK}/firebase-firestore.js`),
     ]);
-    const { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, setDoc, deleteDoc, onSnapshot, getDocFromServer, writeBatch } = fs;
+    const { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, writeBatch } = fs;
     const db = initializeFirestore(initializeApp(firebaseConfig), {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     });
     const settingsRef = doc(db, 'teams', team, 'settings', 'main');
     const controlsRef = collection(db, 'teams', team, 'controls');
+    const photosRef = collection(db, 'teams', team, 'photos');
     const log = e => { console.error(e); onStatus?.('error'); };
 
     const sharedSettings = () => {
@@ -41,6 +43,17 @@ export async function start(team, { onChange, onStatus }) {
 
     store.hooks.settings = () => setDoc(settingsRef, sharedSettings(), { merge: true }).catch(log);
     store.hooks.controlAdd = c => setDoc(doc(controlsRef, String(c.id)), c).catch(log);
+    // Photos : envoyées à la prise de vue, téléchargées seulement quand on en a besoin (génération de l'Excel).
+    photos.hooks.photoPut = p => setDoc(doc(photosRef, p.id), p).catch(log);
+    photos.hooks.photoDel = ids => {
+      const batch = writeBatch(db);
+      ids.forEach(id => batch.delete(doc(photosRef, id)));
+      batch.commit().catch(log);
+    };
+    photos.hooks.photoGet = async id => {
+      const snap = await getDoc(doc(photosRef, id));
+      return snap.exists() ? snap.data() : null;
+    };
     store.hooks.controlsDel = ids => {
       const batch = writeBatch(db);
       ids.forEach(id => batch.delete(doc(controlsRef, String(id))));

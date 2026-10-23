@@ -1,3 +1,5 @@
+import * as photos from './photos.js';
+
 const KEY = 'rapport-encombrants-v1';
 
 // Types de contrôle : `label` s'affiche dans l'appli, `title` dans le titre de l'Excel, `file` dans son nom.
@@ -103,13 +105,27 @@ export const todayISO = () => {
 
 export const typeOf = c => c.type || 'enc'; // anciens contrôles sans type : encombrants
 
-export function addControl(c) {
-  const control = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: state.type, date: todayISO(), user: state.currentUser, ...c };
+// `shots` : photos déjà compressées ({ id, dataUrl, w, h }) ; le contrôle n'en garde que les identifiants.
+export function addControl(c, shots = []) {
+  const control = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: state.type, date: todayISO(), user: state.currentUser, ...c, photos: shots.map(p => p.id) };
   set({ controls: [...state.controls, control] });
+  for (const p of shots) {
+    photos.putLocal(p).catch(console.error);
+    photos.hooks.photoPut?.(p);
+  }
   hooks.controlAdd?.(control);
 }
 
+// Supprime aussi les photos des contrôles retirés (sur ce téléphone et sur le serveur).
+function dropPhotos(list) {
+  const ids = list.flatMap(c => c.photos ?? []);
+  if (!ids.length) return;
+  photos.delLocal(ids).catch(() => {});
+  photos.hooks.photoDel?.(ids);
+}
+
 export function removeControl(id) {
+  dropPhotos(state.controls.filter(c => String(c.id) === String(id)));
   set({ controls: state.controls.filter(c => String(c.id) !== String(id)) });
   hooks.controlsDel?.([id]);
 }
@@ -122,6 +138,7 @@ export function controlsOf(date, user, type = state.type) {
 
 export function clearControls(date, user, type = state.type) {
   const gone = controlsOf(date, user, type);
+  dropPhotos(gone);
   set({ controls: state.controls.filter(c => !gone.includes(c)) });
   hooks.controlsDel?.(gone.map(c => c.id));
 }

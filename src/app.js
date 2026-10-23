@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import { buildFile, downloadFile, frDate } from './export.js';
 import * as sync from './sync.js';
+import * as photos from './photos.js';
 
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -25,6 +26,8 @@ const PATHS = {
   cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 9.5 4 4 0 0 1 17.5 18z"/>',
   download: '<path d="M12 3v12M7 11l5 5 5-5M4 20h16"/>',
   box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
   inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5a4 4 0 0 0 8 0h5"/>',
 };
 const ic = (n, size = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[n]}</svg>`;
@@ -32,7 +35,8 @@ const ic = (n, size = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${size}
 let tab = 'home';
 let syncStatus = ''; // '' | ok | offline | error
 let histAll = false;
-let wizard = null; // { step, time, address, num, operation, conclusion }
+let wizard = null; // { step, time, address, num, operation, conclusion, photos: [{ id, dataUrl, w, h }] }
+const MAX_PHOTOS = 8;
 
 /* ---------- Thème ---------- */
 const THEMES = ['auto', 'light', 'dark'];
@@ -79,7 +83,7 @@ function themeBtn() {
 function controlCard(c, withDelete = true, author = false) {
   return `<div class="card ctrl"><div class="time">${esc(c.time.replace(':', 'h'))}</div>
     <div class="body"><div class="addr">${ic('pin', 16)}<span>${esc(c.address)}${c.num ? ' · n°' + esc(c.num) : ''}</span></div>
-      <div><span class="tag">${esc(c.operation)}</span><span class="tag">${esc(c.conclusion)}</span>${author ? `<span class="tag who">${esc(c.user ?? '')}</span>` : ''}</div></div>
+      <div><span class="tag">${esc(c.operation)}</span><span class="tag">${esc(c.conclusion)}</span>${c.photos?.length ? `<span class="tag photo-tag">${ic('camera', 13)}${c.photos.length}</span>` : ''}${author ? `<span class="tag who">${esc(c.user ?? '')}</span>` : ''}</div></div>
     ${withDelete ? `<button class="del" data-delc="${c.id}" aria-label="Supprimer">${ic('trash', 20)}</button>` : ''}</div>`;
 }
 
@@ -219,7 +223,13 @@ function renderWizard() {
   } else {
     const ccs = store.listOf('conclusions');
     body = `<div class="card panel"><label>Conclusion (observation / action)</label>${ccs.length ? pick(ccs, 'conclusion') : '<p class="hint">Aucune conclusion en liste (onglet Listes).</p>'}
-      <label for="w-cc">Ou saisir manuellement</label><input id="w-cc" value="${ccs.includes(w.conclusion) ? '' : esc(w.conclusion)}" placeholder="Autre conclusion" autocomplete="off"></div>`;
+      <label for="w-cc">Ou saisir manuellement</label><input id="w-cc" value="${ccs.includes(w.conclusion) ? '' : esc(w.conclusion)}" placeholder="Autre conclusion" autocomplete="off"></div>
+      <div class="card panel"><div class="row-status"><label style="margin:0;flex:1">Photos (${w.photos.length})</label>
+        <button class="icon-soft" data-act="photo-cam" aria-label="Prendre une photo">${ic('camera', 22)}</button>
+        <button class="icon-soft" data-act="photo-gal" aria-label="Choisir dans la galerie">${ic('image', 22)}</button></div>
+        ${w.photos.length ? `<div class="thumbs">${w.photos.map((p, i) => `<div class="thumb"><img src="${p.dataUrl}" alt="Photo ${i + 1}"><button class="thumb-x" data-act="photo-del" data-i="${i}" aria-label="Retirer la photo">${ic('plus', 14).replace('<svg ', '<svg style="transform:rotate(45deg)" ')}</button></div>`).join('')}</div>` : '<p class="hint">Aucune photo. Touchez l’appareil photo pour en ajouter.</p>'}
+        <input id="w-photo-cam" class="vh" type="file" accept="image/*" capture="environment">
+        <input id="w-photo-gal" class="vh" type="file" accept="image/*" multiple></div>`;
     ok = !!w.conclusion;
   }
   app.innerHTML = hero(bar, true, false) + `<main class="top">${body}</main>
@@ -256,8 +266,11 @@ async function generateReport(date = store.todayISO()) {
   const controls = store.controlsOf(date, currentUser);
   if (!controls.length) return toast(`Aucun contrôle le ${frDate(date)}`);
   try {
-    await downloadFile(await buildFile({ date, user: currentUser, controls, type }));
-    toast('Fichier Excel généré');
+    toast('Génération du fichier…');
+    const shots = await Promise.all(controls.map(c => Promise.all((c.photos ?? []).map(photos.getPhoto))));
+    const missing = shots.flat().filter(p => !p).length;
+    await downloadFile(await buildFile({ date, user: currentUser, controls, type, photos: shots.map(l => l.filter(Boolean)) }));
+    toast(missing ? `Excel généré (${missing} photo${missing > 1 ? 's' : ''} indisponible${missing > 1 ? 's' : ''})` : 'Fichier Excel généré');
   } catch (e) {
     console.error(e);
     toast('Erreur lors de la génération');
@@ -302,13 +315,16 @@ app.addEventListener('click', e => {
       return;
     case 'switch': store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
     case 'change-type': store.set({ type: '' }); tab = 'home'; return render();
-    case 'start': wizard = { step: 0, time: nowHM(), address: '', num: '', operation: '', conclusion: '' }; return render();
+    case 'start': wizard = { step: 0, time: nowHM(), address: '', num: '', operation: '', conclusion: '', photos: [] }; return render();
     case 'back': syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
+    case 'photo-cam': return document.getElementById('w-photo-cam')?.click();
+    case 'photo-gal': return document.getElementById('w-photo-gal')?.click();
+    case 'photo-del': syncWizardInputs(); wizard.photos.splice(Number(d.i), 1); return render();
     case 'next':
       syncWizardInputs();
       if (wizard.step < 3) { wizard.step++; return render(); }
       // Les saisies manuelles restent dans le contrôle : elles ne sont pas ajoutées aux listes.
-      store.addControl({ time: wizard.time, address: wizard.address, num: wizard.num, operation: wizard.operation, conclusion: wizard.conclusion });
+      store.addControl({ time: wizard.time, address: wizard.address, num: wizard.num, operation: wizard.operation, conclusion: wizard.conclusion }, wizard.photos);
       wizard = null;
       toast('Contrôle enregistré');
       return render();
@@ -329,6 +345,18 @@ app.addEventListener('input', () => {
   const next = app.querySelector('[data-act="next"]');
   const ok = [wizard.time, wizard.address, wizard.operation, wizard.conclusion][wizard.step];
   if (next) next.disabled = !ok;
+});
+
+app.addEventListener('change', async e => {
+  const input = e.target.closest('input[type="file"]');
+  if (!input || !wizard) return;
+  syncWizardInputs();
+  for (const file of input.files) {
+    if (wizard.photos.length >= MAX_PHOTOS) { toast(`${MAX_PHOTOS} photos maximum par contrôle`); break; }
+    try { wizard.photos.push(await photos.compress(file)); } catch (err) { console.error(err); toast('Photo illisible'); }
+  }
+  input.value = '';
+  render();
 });
 
 app.addEventListener('keydown', e => {
