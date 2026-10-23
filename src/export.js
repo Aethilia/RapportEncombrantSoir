@@ -75,24 +75,12 @@ export async function buildFile(data) {
   return { file, name };
 }
 
-// Partage natif (Mail/Gmail avec pièce jointe) ; repli : téléchargement + mailto.
-export async function sendFile({ file, name }, { email, date, user }) {
-  const subject = `Contrôle encombrants soir du ${frDate(date)}`;
-  const text = `Bonjour,\n\nVeuillez trouver ci-joint le récapitulatif du contrôle du ${frDate(date)}.\n\n${user}`;
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: subject, text });
-      return 'shared';
-    } catch (e) {
-      if (e.name === 'AbortError') return 'cancelled';
-    }
-  }
+// Téléchargement du fichier .xlsx (téléphone et ordinateur).
+export function downloadFile({ file, name }) {
   const url = URL.createObjectURL(file);
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
-  location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text + '\n\n(Joindre le fichier téléchargé : ' + name + ')')}`;
-  return 'fallback';
 }

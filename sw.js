@@ -1,5 +1,5 @@
-const CACHE = 'encombrants-v4';
-const FILES = ['./', 'index.html', 'style.css', 'src/app.js', 'src/store.js', 'src/export.js',
+const CACHE = 'encombrants-v5';
+const FILES = ['./', 'index.html', 'style.css', 'src/app.js', 'src/store.js', 'src/export.js', 'src/sync.js', 'src/firebase-config.js',
   'vendor/exceljs.min.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo.png'];
 
 self.addEventListener('install', e => {

@@ -171,3 +171,14 @@ dialog h2 { margin: 0; font-size: 22px; }
 .user-card .go { flex: 1; display: flex; align-items: center; gap: 12px; border: 0; background: none; font: inherit; font-size: 18px; font-weight: 650; color: var(--fg); text-align: left; padding: 4px; cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- Équipe / synchronisation ---------- */
+.seg { display: flex; padding: 4px; gap: 4px; background: var(--soft); border-radius: 14px; }
+.seg button { flex: 1; padding: 10px; border: 0; border-radius: 11px; background: none; color: var(--muted); font: inherit; font-weight: 650; font-size: 14.5px; cursor: pointer; }
+.seg button.on { background: var(--card); color: var(--brand); box-shadow: var(--shadow); }
+.row-status { display: flex; align-items: center; gap: 10px; font-size: 17px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent); }
+.dot.offline { background: #e0a100; }
+.dot.error { background: var(--danger); }
+.tag.who { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--fg); }

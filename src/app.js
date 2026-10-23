@@ -1,5 +1,6 @@
 import * as store from './store.js';
-import { buildFile, sendFile, frDate } from './export.js';
+import { buildFile, downloadFile, frDate } from './export.js';
+import * as sync from './sync.js';
 
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,11 +22,15 @@ const PATHS = {
   pin: '<path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   back: '<path d="M15 6l-6 6 6 6"/>',
   swap: '<path d="M7 7h13l-3-3M17 17H4l3 3"/>',
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 9.5 4 4 0 0 1 17.5 18z"/>',
+  download: '<path d="M12 3v12M7 11l5 5 5-5M4 20h16"/>',
   inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5a4 4 0 0 0 8 0h5"/>',
 };
 const ic = (n, size = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[n]}</svg>`;
 
 let tab = 'home';
+let syncStatus = ''; // '' | ok | offline | error
+let histAll = false;
 let wizard = null; // { step, time, address, num, operation, conclusion }
 
 /* ---------- Thème ---------- */
@@ -70,10 +75,10 @@ function themeBtn() {
   return `<button class="icon-btn" data-act="theme" aria-label="Thème : ${THEME_LABEL[t]}">${ic(t === 'light' ? 'sun' : t === 'dark' ? 'moon' : 'auto', 20)}</button>`;
 }
 
-function controlCard(c, withDelete = true) {
+function controlCard(c, withDelete = true, author = false) {
   return `<div class="card ctrl"><div class="time">${esc(c.time.replace(':', 'h'))}</div>
     <div class="body"><div class="addr">${ic('pin', 16)}<span>${esc(c.address)}${c.num ? ' · n°' + esc(c.num) : ''}</span></div>
-      <div><span class="tag">${esc(c.operation)}</span><span class="tag">${esc(c.conclusion)}</span></div></div>
+      <div><span class="tag">${esc(c.operation)}</span><span class="tag">${esc(c.conclusion)}</span>${author ? `<span class="tag who">${esc(c.user ?? '')}</span>` : ''}</div></div>
     ${withDelete ? `<button class="del" data-delc="${c.id}" aria-label="Supprimer">${ic('trash', 20)}</button>` : ''}</div>`;
 }
 
@@ -111,7 +116,7 @@ function renderHome() {
         <div class="card stat"><b>${last}</b><span>dernier contrôle</span></div></div>
       <div class="section-title"><span>Contrôles du jour</span></div>
       <div class="list">${list.map(c => controlCard(c)).join('') || `<div class="card empty">${ic('inbox', 34)}<div>Aucun contrôle pour le moment</div></div>`}</div>
-      <button class="btn end" data-act="finish" ${list.length ? '' : 'disabled'}>${ic('send', 20)}Fin &amp; envoyer</button>
+      <button class="btn end" data-act="finish" ${list.length ? '' : 'disabled'}>${ic('download', 20)}Fin &amp; générer l’Excel</button>
     </main>
     <button class="btn fab" data-act="start">${ic('plus', 22)}Commencer</button>` + tabs();
 }
@@ -119,20 +124,21 @@ function renderHome() {
 function renderHistory() {
   const s = store.get();
   const today = store.todayISO();
-  const dates = store.datesOf(s.currentUser);
+  const dates = histAll ? store.datesOfAll() : store.datesOf(s.currentUser);
   const body = dates.map(date => {
-    const list = store.controlsOf(date, s.currentUser);
+    const list = histAll ? store.controlsOfAll(date) : store.controlsOf(date, s.currentUser);
     const d = isoToDate(date);
     const label = date === today ? 'Aujourd’hui' : longDate(d);
     return `<details class="card day"><summary>
         <div class="day-badge"><b>${d.getDate()}</b><small>${d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')}</small></div>
         <div><div class="day-title">${esc(label)}</div><div class="day-sub">${list.length} contrôle${list.length > 1 ? 's' : ''}</div></div>${ic('chev', 20).replace('class="ic"', 'class="ic chev"')}</summary>
-      <div class="day-body">${list.map(c => controlCard(c, false)).join('')}
-        <div class="day-actions"><button class="btn small ghost" data-act="resend" data-date="${date}">${ic('send', 17)}Envoyer l’Excel</button>
-        <button class="btn small alt" data-act="delday" data-date="${date}">${ic('trash', 17)}Supprimer</button></div></div></details>`;
+      <div class="day-body">${list.map(c => controlCard(c, false, histAll)).join('')}
+        ${histAll ? '' : `<div class="day-actions"><button class="btn small ghost" data-act="resend" data-date="${date}">${ic('download', 17)}Télécharger l’Excel</button>
+        <button class="btn small alt" data-act="delday" data-date="${date}">${ic('trash', 17)}Supprimer</button></div>`}</div></details>`;
   }).join('');
+  const seg = `<div class="seg"><button data-act="hist-me" class="${histAll ? '' : 'on'}">Mes contrôles</button><button data-act="hist-all" class="${histAll ? 'on' : ''}">Toute l’équipe</button></div>`;
   app.innerHTML = hero('<h1 class="title">Historique</h1>', true) +
-    `<main class="top">${body || `<div class="card empty">${ic('history', 34)}<div>Aucun contrôle enregistré</div></div>`}</main>` + tabs();
+    `<main class="top">${sync.enabled && s.team ? seg : ''}${body || `<div class="card empty">${ic('history', 34)}<div>Aucun contrôle enregistré</div></div>`}</main>` + tabs();
 }
 
 function renderLists() {
@@ -140,12 +146,29 @@ function renderLists() {
     `<main class="top">${manager('operations', 'Opérations (constats)', 'Nouvelle opération')}${manager('conclusions', 'Conclusions (observation / action)', 'Nouvelle conclusion')}</main>` + tabs();
 }
 
+const STATUS_LABEL = { ok: 'Synchronisé', offline: 'Hors-ligne (synchronisation à la reconnexion)', error: 'Erreur de synchronisation', '': 'Connexion…' };
+
+function teamBlock() {
+  const { team } = store.get();
+  if (!sync.enabled) return '';
+  return `<div class="section-title"><span>Équipe</span></div>
+    <div class="card panel"><div class="row-status"><span class="dot ${syncStatus || 'wait'}"></span><b>${esc(team)}</b></div>
+    <div class="day-sub">${STATUS_LABEL[syncStatus]}</div>
+    <button class="btn small alt" data-act="leave">${ic('back', 17)}Quitter l’équipe</button></div>`;
+}
+
+function renderTeamJoin() {
+  app.innerHTML = hero(`<h1 class="title">Rejoindre l’équipe</h1><div class="date" style="opacity:.85;margin-top:4px;position:relative;z-index:1">Tous les téléphones qui saisissent le même code partagent utilisateurs, listes et contrôles.</div>`, true) +
+    `<main class="top"><div class="card panel"><label for="in-team">Code d’équipe</label>
+      <input id="in-team" placeholder="ex. encombrants-nice-2026" autocapitalize="none" autocorrect="off" autocomplete="off">
+      <button class="btn" data-act="join">${ic('cloud', 20)}Rejoindre</button>
+      <p class="hint">Choisissez un code long et difficile à deviner : il protège l’accès aux données.</p></div></main>`;
+}
+
 function renderUsers() {
   app.innerHTML = hero('<h1 class="title">Utilisateurs</h1>', true) +
     `<main class="top">${manager('users', 'Utilisateurs', 'Nom Prénom')}
-      <div class="section-title"><span>Envoi du rapport</span></div>
-      <div class="card panel"><div class="day-sub">E-mail destinataire</div><b>${esc(store.get().email || 'Non renseigné')}</b>
-      <button class="btn small ghost" data-act="email">${ic('send', 17)}Modifier l’e-mail</button></div></main>` + tabs();
+      ${teamBlock()}</main>` + tabs();
 }
 
 function renderUserPicker() {
@@ -190,6 +213,7 @@ function renderWizard() {
 function render() {
   applyTheme();
   const s = store.get();
+  if (sync.enabled && !s.team) return renderTeamJoin();
   if (!s.currentUser) return renderUserPicker();
   if (wizard) return renderWizard();
   ({ history: renderHistory, lists: renderLists, users: renderUsers }[tab] ?? renderHome)();
@@ -208,46 +232,18 @@ function syncWizardInputs() {
   if (wizard.step === 3 && v('w-cc')) wizard.conclusion = v('w-cc');
 }
 
-/* ---------- Fin : génération et envoi de l'Excel ---------- */
-async function sendReport(date, email) {
-  const s = store.get();
-  const controls = store.controlsOf(date, s.currentUser);
+/* ---------- Fin : génération du fichier Excel ---------- */
+async function generateReport(date = store.todayISO()) {
+  const { currentUser } = store.get();
+  const controls = store.controlsOf(date, currentUser);
   if (!controls.length) return toast(`Aucun contrôle le ${frDate(date)}`);
   try {
-    const file = await buildFile({ date, user: s.currentUser, controls });
-    const res = await sendFile(file, { email, date, user: s.currentUser });
-    if (res !== 'cancelled') toast(res === 'shared' ? 'Rapport prêt à envoyer' : 'Excel téléchargé, joignez-le au mail');
+    await downloadFile(await buildFile({ date, user: currentUser, controls }));
+    toast('Fichier Excel généré');
   } catch (e) {
     console.error(e);
     toast('Erreur lors de la génération');
   }
-}
-
-// Demande l'e-mail destinataire (une seule fois : il est mémorisé), puis appelle `then`.
-function askEmail(then) {
-  const dlg = document.createElement('dialog');
-  dlg.innerHTML = `<form method="dialog"><h2>E-mail destinataire</h2>
-    <div><label for="f-mail">Adresse où envoyer le rapport</label><input id="f-mail" type="email" inputmode="email" value="${esc(store.get().email)}" placeholder="adresse@exemple.fr"></div>
-    <button class="btn" value="go">${ic('check', 20)}Valider</button><button class="btn alt" value="cancel">Annuler</button></form>`;
-  document.body.append(dlg);
-  dlg.showModal();
-  dlg.addEventListener('close', () => {
-    const email = dlg.querySelector('#f-mail').value.trim();
-    const go = dlg.returnValue === 'go';
-    dlg.remove();
-    if (!go) return;
-    if (!email) return toast('Saisissez une adresse e-mail');
-    store.set({ email });
-    render();
-    then?.(email);
-  });
-}
-
-// Fin : génération immédiate du rapport du jour puis ouverture directe de l'envoi.
-function finish(date = store.todayISO()) {
-  const { email } = store.get();
-  if (email) sendReport(date, email);
-  else askEmail(e => sendReport(date, e));
 }
 
 /* ---------- Événements ---------- */
@@ -267,12 +263,24 @@ app.addEventListener('click', e => {
     return;
   }
   if (d.delc) {
-    if (confirm('Supprimer ce contrôle ?')) { store.removeControl(Number(d.delc)); render(); }
+    if (confirm('Supprimer ce contrôle ?')) { store.removeControl(d.delc); render(); }
     return;
   }
   if (d.pick) { syncWizardInputs(); wizard[d.pick] = d.v; return render(); }
   switch (d.act) {
     case 'theme': return cycleTheme();
+    case 'hist-me': histAll = false; return render();
+    case 'hist-all': histAll = true; return render();
+    case 'join': {
+      const code = sync.normalizeTeam(document.getElementById('in-team').value);
+      if (code.length < 6) return toast('Code trop court (6 caractères minimum)');
+      store.set({ team: code });
+      startSync();
+      return render();
+    }
+    case 'leave':
+      if (confirm('Quitter l’équipe ? Les données déjà reçues restent sur ce téléphone.')) { store.set({ team: '' }); location.reload(); }
+      return;
     case 'switch': store.set({ currentUser: null }); tab = 'home'; return render();
     case 'start': wizard = { step: 0, time: nowHM(), address: '', num: '', operation: '', conclusion: '' }; return render();
     case 'back': syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
@@ -284,9 +292,8 @@ app.addEventListener('click', e => {
       wizard = null;
       toast('Contrôle enregistré');
       return render();
-    case 'finish': return finish();
-    case 'resend': return finish(d.date);
-    case 'email': return askEmail();
+    case 'finish': return generateReport();
+    case 'resend': return generateReport(d.date);
     case 'delday':
       if (confirm(`Supprimer tous les contrôles du ${frDate(d.date)} ?`)) {
         store.clearControls(d.date, store.get().currentUser);
@@ -307,8 +314,26 @@ app.addEventListener('input', () => {
 app.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const input = e.target.closest('input[id^="in-"]');
-  if (input) app.querySelector(`[data-add="${input.id.slice(3)}"]`).click();
+  if (!input) return;
+  const btn = app.querySelector(input.id === 'in-team' ? '[data-act="join"]' : `[data-add="${input.id.slice(3)}"]`);
+  btn?.click();
 });
+
+let renderTimer;
+function renderRemote() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    // Ne pas casser une saisie en cours ni l'assistant.
+    if (wizard || app.contains(document.activeElement) && document.activeElement.matches('input, select')) return;
+    render();
+  }, 150);
+}
+
+function startSync() {
+  const { team } = store.get();
+  if (!sync.enabled || !team) return;
+  sync.start(team, { onChange: renderRemote, onStatus: st => { syncStatus = st; if (tab === 'users') renderRemote(); } });
+}
 
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
@@ -316,4 +341,5 @@ if ('serviceWorker' in navigator) {
   // Nouvelle version installée : on recharge pour l'afficher (sauf pendant un contrôle en cours).
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !wizard) location.reload(); });
 }
+startSync();
 render();
