@@ -11,6 +11,7 @@ const fill = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
 const FONT = 'Calibri';
 
 export const frDate = iso => iso.replaceAll('-', '/');
+export const frShort = iso => iso.split('-').reverse().join('/'); // AAAA-MM-JJ -> JJ/MM/AAAA
 
 // `photos[i]` : photos ({ dataUrl, w, h }) du contrôle controls[i].
 export async function buildWorkbook({ date, user, controls, type = 'enc', photos = [] }) {
@@ -25,7 +26,7 @@ export async function buildWorkbook({ date, user, controls, type = 'enc', photos
       margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.3, footer: 0.3 },
     },
   });
-  ws.columns = [{ width: 10 }, { width: 10 }, { width: 28 }, { width: 8 }, { width: 32 }, { width: 30 }];
+  ws.columns = [{ width: 10 }, { width: 12 }, { width: 9 }, { width: 26 }, { width: 7 }, { width: 30 }, { width: 28 }];
 
   // Logo
   try {
@@ -36,7 +37,7 @@ export async function buildWorkbook({ date, user, controls, type = 'enc', photos
   [24, 24, 20, 8].forEach((h, i) => { ws.getRow(i + 1).height = h; });
 
   // Titre (bandeau)
-  ws.mergeCells('A5:F5');
+  ws.mergeCells('A5:G5');
   const title = ws.getCell('A5');
   title.value = `CONTRÔLE ${t.title} SOIR DU ${frDate(date)}`;
   title.font = { name: FONT, bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
@@ -45,17 +46,17 @@ export async function buildWorkbook({ date, user, controls, type = 'enc', photos
   ws.getRow(5).height = 36;
 
   // Responsable
-  ws.mergeCells('A6:F6');
+  ws.mergeCells('A6:G6');
   const resp = ws.getCell('A6');
   resp.value = `RESPONSABLE :   ${user}`;
   resp.font = { name: FONT, bold: true, size: 12, color: { argb: NAVY } };
   resp.alignment = { horizontal: 'center', vertical: 'middle' };
   resp.fill = fill(PALE);
   ws.getRow(6).height = 28;
-  for (const r of [5, 6]) for (let c = 1; c <= 6; c++) ws.getRow(r).getCell(c).border = BORDER;
+  for (const r of [5, 6]) for (let c = 1; c <= 7; c++) ws.getRow(r).getCell(c).border = BORDER;
 
   // En-têtes de colonnes
-  ['N° contrôle', 'Heure', 'Voies', 'N°', 'Constats', 'Observation / Action'].forEach((h, i) => {
+  ['N° contrôle', 'Date', 'Heure', 'Voies', 'N°', 'Constats', 'Observation / Action'].forEach((h, i) => {
     const c = ws.getRow(7).getCell(i + 1);
     c.value = h;
     c.font = { name: FONT, bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
@@ -70,12 +71,12 @@ export async function buildWorkbook({ date, user, controls, type = 'enc', photos
   for (let i = 0; i < total; i++) {
     const row = ws.getRow(8 + i);
     const c = controls[i];
-    const vals = c ? [i + 1, c.time.replace(':', 'h'), c.address, c.num || '', c.operation, c.conclusion] : ['', '', '', '', '', ''];
+    const vals = c ? [i + 1, frShort(c.date), c.time.replace(':', 'h'), c.address, c.num || '', c.operation, c.conclusion] : ['', '', '', '', '', '', ''];
     vals.forEach((v, j) => {
       const cell = row.getCell(j + 1);
       cell.value = v;
-      const center = j <= 1 || j === 3;
-      cell.font = { name: FONT, size: 12, bold: j <= 1 };
+      const center = j <= 2 || j === 4;
+      cell.font = { name: FONT, size: 12, bold: j === 0 || j === 2 };
       cell.alignment = { vertical: 'middle', wrapText: true, horizontal: center ? 'center' : 'left', indent: center ? 0 : 1 };
       cell.border = BORDER;
       if (i % 2) cell.fill = fill(ZEBRA);
@@ -85,7 +86,7 @@ export async function buildWorkbook({ date, user, controls, type = 'enc', photos
 
   // Pied de fiche
   const foot = 8 + total + 1;
-  ws.mergeCells(`A${foot}:F${foot}`);
+  ws.mergeCells(`A${foot}:G${foot}`);
   const f = ws.getCell(`A${foot}`);
   f.value = '4200-Descriptif tournées – Rév.0';
   f.font = { name: FONT, size: 9, italic: true, color: { argb: 'FF6A7788' } };
@@ -102,7 +103,7 @@ async function addPhotoSection(wb, ws, controls, photos, start) {
   if (!items.length) return;
 
   ws.getRow(start - 2).addPageBreak(); // les photos commencent sur une nouvelle page à l'impression
-  ws.mergeCells(`A${start}:F${start}`);
+  ws.mergeCells(`A${start}:G${start}`);
   const band = ws.getCell(`A${start}`);
   band.value = 'PHOTOS';
   band.font = { name: FONT, bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
@@ -110,18 +111,18 @@ async function addPhotoSection(wb, ws, controls, photos, start) {
   band.fill = fill(NAVY);
   ws.getRow(start).height = 30;
 
-  const BOX_W = 396, BOX_H = 290;
+  const BOX_W = 405, BOX_H = 290;
   let r = start + 1;
   for (let i = 0; i < items.length; i += 2) {
     const capRow = r, imgRow = r + 1;
     ws.getRow(capRow).height = 24;
     ws.getRow(imgRow).height = 222;
     for (const [side, it] of items.slice(i, i + 2).entries()) {
-      const [from, to, col] = side ? ['E', 'F', 4] : ['A', 'D', 0];
+      const [from, to, col] = side ? ['E', 'G', 4] : ['A', 'D', 0];
       ws.mergeCells(`${from}${capRow}:${to}${capRow}`);
       const cap = ws.getCell(`${from}${capRow}`);
       const part = it.count > 1 ? ` (photo ${it.k + 1}/${it.count})` : '';
-      cap.value = `Contrôle n° ${it.n} · ${it.c.time.replace(':', 'h')} · ${it.c.address}${part}`;
+      cap.value = `Contrôle n° ${it.n} · ${frShort(it.c.date)} · ${it.c.time.replace(':', 'h')} · ${it.c.address}${part}`;
       cap.font = { name: FONT, bold: true, size: 11, color: { argb: NAVY } };
       cap.alignment = { vertical: 'middle', indent: 1, wrapText: true };
       cap.fill = fill(PALE);

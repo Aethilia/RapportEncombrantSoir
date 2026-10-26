@@ -1,5 +1,5 @@
 import * as store from './store.js';
-import { buildFile, downloadFile, frDate } from './export.js';
+import { buildFile, downloadFile, frDate, frShort } from './export.js';
 import * as sync from './sync.js';
 import * as photos from './photos.js';
 
@@ -35,7 +35,7 @@ const ic = (n, size = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${size}
 let tab = 'home';
 let syncStatus = ''; // '' | ok | offline | error
 let histAll = false;
-let wizard = null; // { step, time, address, num, operation, conclusion, photos: [{ id, dataUrl, w, h }] }
+let wizard = null; // { step, date, time, address, num, operation, conclusion, photos: [{ id, dataUrl, w, h }] }
 const MAX_PHOTOS = 8;
 
 /* ---------- Thème ---------- */
@@ -81,7 +81,7 @@ function themeBtn() {
 }
 
 function controlCard(c, withDelete = true, author = false) {
-  return `<div class="card ctrl"><div class="time">${esc(c.time.replace(':', 'h'))}</div>
+  return `<div class="card ctrl"><div class="time">${esc(c.time.replace(':', 'h'))}<small>${esc(c.date.slice(8))}/${esc(c.date.slice(5, 7))}</small></div>
     <div class="body"><div class="addr">${ic('pin', 16)}<span>${esc(c.address)}${c.num ? ' · n°' + esc(c.num) : ''}</span></div>
       <div><span class="tag">${esc(c.operation)}</span><span class="tag">${esc(c.conclusion)}</span>${c.photos?.length ? `<span class="tag photo-tag">${ic('camera', 13)}${c.photos.length}</span>` : ''}${author ? `<span class="tag who">${esc(c.user ?? '')}</span>` : ''}</div></div>
     ${withDelete ? `<button class="del" data-delc="${c.id}" aria-label="Supprimer">${ic('trash', 20)}</button>` : ''}</div>`;
@@ -200,7 +200,7 @@ function renderUserPicker() {
       <button class="btn" data-add="users" aria-label="Ajouter">${ic('plus', 24)}</button></div></div></main>`;
 }
 
-const STEPS = ['Heure', 'Adresse', 'Opération', 'Conclusion'];
+const STEPS = ['Date et heure', 'Adresse', 'Opération', 'Conclusion'];
 
 function renderWizard() {
   const w = wizard, s = store.get();
@@ -209,8 +209,9 @@ function renderWizard() {
   const pick = (list, key) => `<div class="pick">${list.map(v => `<button data-pick="${key}" data-v="${esc(v)}" class="${w[key] === v ? 'on' : ''}">${esc(v)}${w[key] === v ? ic('check', 20) : ''}</button>`).join('')}</div>`;
   let body, ok;
   if (w.step === 0) {
-    body = `<div class="card panel"><label for="w-time">Heure du contrôle</label><input id="w-time" type="time" value="${esc(w.time)}"></div>`;
-    ok = !!w.time;
+    body = `<div class="card panel"><label for="w-date">Date du contrôle</label><input id="w-date" type="date" value="${esc(w.date)}">
+      <label for="w-time">Heure du contrôle</label><input id="w-time" type="time" value="${esc(w.time)}"></div>`;
+    ok = !!(w.date && w.time);
   } else if (w.step === 1) {
     body = `<div class="card panel"><label for="w-addr">Adresse (voie)</label><input id="w-addr" placeholder="Ex. Av. Jean Médecin" value="${esc(w.address)}" autocomplete="off">
       <label for="w-num">N° (optionnel)</label><input id="w-num" inputmode="numeric" value="${esc(w.num)}" autocomplete="off"></div>`;
@@ -251,7 +252,10 @@ function render() {
 function syncWizardInputs() {
   if (!wizard) return;
   const v = id => document.getElementById(id)?.value.trim();
-  if (wizard.step === 0 && v('w-time') !== undefined) wizard.time = v('w-time');
+  if (wizard.step === 0) {
+    wizard.date = v('w-date') ?? wizard.date;
+    wizard.time = v('w-time') ?? wizard.time;
+  }
   if (wizard.step === 1) {
     wizard.address = v('w-addr') ?? wizard.address;
     wizard.num = v('w-num') ?? wizard.num;
@@ -315,7 +319,7 @@ app.addEventListener('click', e => {
       return;
     case 'switch': store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
     case 'change-type': store.set({ type: '' }); tab = 'home'; return render();
-    case 'start': wizard = { step: 0, time: nowHM(), address: '', num: '', operation: '', conclusion: '', photos: [] }; return render();
+    case 'start': wizard = { step: 0, date: store.todayISO(), time: nowHM(), address: '', num: '', operation: '', conclusion: '', photos: [] }; return render();
     case 'back': syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
     case 'photo-cam': return document.getElementById('w-photo-cam')?.click();
     case 'photo-gal': return document.getElementById('w-photo-gal')?.click();
@@ -324,9 +328,10 @@ app.addEventListener('click', e => {
       syncWizardInputs();
       if (wizard.step < 3) { wizard.step++; return render(); }
       // Les saisies manuelles restent dans le contrôle : elles ne sont pas ajoutées aux listes.
-      store.addControl({ time: wizard.time, address: wizard.address, num: wizard.num, operation: wizard.operation, conclusion: wizard.conclusion }, wizard.photos);
+      const lastDate = wizard.date;
+      store.addControl({ date: wizard.date, time: wizard.time, address: wizard.address, num: wizard.num, operation: wizard.operation, conclusion: wizard.conclusion }, wizard.photos);
       wizard = null;
-      toast('Contrôle enregistré');
+      toast(lastDate !== store.todayISO() ? `Contrôle enregistré le ${frShort(lastDate)} (voir Historique)` : 'Contrôle enregistré');
       return render();
     case 'finish': return generateReport();
     case 'resend': return generateReport(d.date);
@@ -343,7 +348,7 @@ app.addEventListener('input', () => {
   if (!wizard) return;
   syncWizardInputs();
   const next = app.querySelector('[data-act="next"]');
-  const ok = [wizard.time, wizard.address, wizard.operation, wizard.conclusion][wizard.step];
+  const ok = [wizard.date && wizard.time, wizard.address, wizard.operation, wizard.conclusion][wizard.step];
   if (next) next.disabled = !ok;
 });
 
