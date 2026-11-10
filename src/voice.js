@@ -18,12 +18,27 @@ export function listen({ onText, onEnd, onError }) {
       if (e.results[i].isFinal) done += (done ? ' ' : '') + t.trim();
       else live += t;
     }
-    onText((done + ' ' + live).trim());
+    onText((done + ' ' + live).trim(), done);
   };
   r.onerror = e => onError?.(e.error);
   r.onend = () => onEnd?.();
   r.start();
   return () => { try { r.stop(); } catch { /* déjà arrêté */ } };
+}
+
+/* ---------- Mot de fin ---------- */
+// « … fin », « fin du contrôle », « terminé », « clôturer », « enregistrer » en DERNIER mot : clôture le contrôle.
+const END_RE = /[\s,;.!?]*\b(fin(\s+d[ue]\s+(controle|saisie))?|termine[e]?|c'?est\s+termine|cloture[rz]?|cloture|enregistre[rz]?|valide[rz]?)[\s,;.!?]*$/;
+
+// Renvoie le texte sans le mot de fin s'il est présent à la fin, sinon null.
+export function endCommand(text) {
+  const plain = norm(text);
+  const m = plain.match(END_RE);
+  if (!m) return null;
+  // `norm` garde la longueur sauf pour les apostrophes retirées : on coupe sur le nombre de mots.
+  const words = text.trim().split(/\s+/);
+  const drop = m[0].split(/\s+/).filter(w => /[a-z]/.test(w)).length;
+  return words.slice(0, Math.max(0, words.length - drop)).join(' ').replace(/[\s,;.!?]+$/, '');
 }
 
 /* ---------- Découpage de la phrase ---------- */

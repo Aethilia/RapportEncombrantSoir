@@ -227,7 +227,7 @@ function optionsBlock() {
   return `<div class="section-title"><span>Options</span></div>
     <div class="card panel"><label style="margin:0">${ic('mic', 17)} Saisie vocale</label>
     <div class="seg"><button data-act="voice-off" class="${on ? '' : 'on'}">Désactivée</button><button data-act="voice-on" class="${on ? 'on' : ''}">Activée</button></div>
-    <p class="hint" style="text-align:left;padding:0 2px">Ajoute un bouton « Dicter » au début d’un contrôle : l’appli remplit l’heure, l’adresse, l’opération et la conclusion à partir de ce que vous dites. Réglage propre à ce téléphone.</p></div>`;
+    <p class="hint" style="text-align:left;padding:0 2px">Ajoute un bouton « Dicter » au début d’un contrôle : l’appli remplit l’heure, l’adresse, l’opération et la conclusion à partir de ce que vous dites. Terminez par « fin » pour enregistrer le contrôle sans passer par les étapes. Réglage propre à ce téléphone.</p></div>`;
 }
 
 function voiceCard() {
@@ -237,7 +237,7 @@ function voiceCard() {
     : '';
   return `<div class="card panel"><label for="w-voice">${ic('mic', 17)} Dicter le contrôle</label>
     <textarea id="w-voice" rows="3" placeholder="Ex. « 22h15, avenue Jean Médecin numéro 12, dépôt sauvage, conclusion signalement mairie »">${esc(w.heard)}</textarea>
-    <p class="hint" style="text-align:left;padding:0 2px">${voice.supported ? 'Touchez « Parler », dites le contrôle, puis « Remplir ».' : 'Touchez la zone ci-dessus puis le micro du clavier pour dicter, puis « Remplir ».'} Pour un élément hors liste, dites « opération … » ou « conclusion … ».</p>
+    <p class="hint" style="text-align:left;padding:0 2px">${voice.supported ? 'Touchez « Parler », dites le contrôle, puis « Remplir ».' : 'Touchez la zone ci-dessus puis le micro du clavier pour dicter, puis « Remplir ».'} Pour un élément hors liste, dites « opération … » ou « conclusion … ». Finissez par « fin » pour enregistrer le contrôle directement.</p>
     <div class="day-actions">${mic}<button class="btn small" data-act="voice-fill" ${w.heard.trim() ? '' : 'disabled'}>${ic('check', 17)}Remplir</button></div></div>`;
 }
 
@@ -249,14 +249,33 @@ function endListening() {
 function fillFromVoice() {
   endListening();
   const w = wizard;
+  // Dicté avec « fin » en dernier mot : on enregistre directement si tout est rempli.
+  const stripped = voice.endCommand(w.heard);
+  const close = stripped !== null;
+  if (close) w.heard = stripped;
   const r = voice.parse(w.heard, { operations: store.listOf('operations'), conclusions: store.listOf('conclusions'), today: store.todayISO() });
   const fields = ['date', 'time', 'address', 'num', 'operation', 'conclusion'].filter(f => r[f]);
   if (!fields.length) return toast('Rien reconnu, réessayez');
   for (const f of fields) w[f] = r[f];
+  if (close) {
+    if (w.date && w.time && w.address && w.operation && w.conclusion) return saveWizard();
+    toast('Fin dite, mais il manque des champs : complétez puis enregistrez');
+  }
   // On ouvre la première étape à compléter, sinon la dernière (photos) pour vérifier.
   const missing = [!w.address, !w.operation, !w.conclusion].indexOf(true);
   w.step = missing < 0 ? 3 : missing + 1;
-  toast('Pré-rempli : vérifiez avant d’enregistrer');
+  if (!close) toast('Pré-rempli : vérifiez avant d’enregistrer');
+  render();
+}
+
+// Enregistre le contrôle de l'assistant (les saisies manuelles ne sont pas ajoutées aux listes).
+function saveWizard() {
+  endListening();
+  const w = wizard;
+  store.addControl({ date: w.date, time: w.time, address: w.address, num: w.num, operation: w.operation, conclusion: w.conclusion }, w.photos);
+  wizard = null;
+  toast(w.date !== store.todayISO() ? `Contrôle enregistré le ${frShort(w.date)} (voir Historique)` : 'Contrôle enregistré');
+  navigator.vibrate?.(60);
   render();
 }
 
@@ -422,9 +441,14 @@ app.addEventListener('click', e => {
       const before = wizard.heard.trim();
       try {
         stopListening = voice.listen({
-          onText: txt => {
+          onText: (txt, finalTxt) => {
             if (!wizard) return;
             wizard.heard = (before ? before + ' ' : '') + txt;
+            // « fin » prononcé (et confirmé par la reconnaissance) : on remplit et on clôture.
+            if (finalTxt && finalTxt.trim() === txt && voice.endCommand(txt) !== null) {
+              wizard.heard = (before ? before + ' ' : '') + finalTxt;
+              return fillFromVoice();
+            }
             const ta = document.getElementById('w-voice');
             if (ta) ta.value = wizard.heard;
             const fill = app.querySelector('[data-act="voice-fill"]');
@@ -463,12 +487,7 @@ app.addEventListener('click', e => {
       endListening();
       syncWizardInputs();
       if (wizard.step < 3) { wizard.step++; return render(); }
-      // Les saisies manuelles restent dans le contrôle : elles ne sont pas ajoutées aux listes.
-      const lastDate = wizard.date;
-      store.addControl({ date: wizard.date, time: wizard.time, address: wizard.address, num: wizard.num, operation: wizard.operation, conclusion: wizard.conclusion }, wizard.photos);
-      wizard = null;
-      toast(lastDate !== store.todayISO() ? `Contrôle enregistré le ${frShort(lastDate)} (voir Historique)` : 'Contrôle enregistré');
-      return render();
+      return saveWizard();
     case 'finish': return generateReport();
     case 'resend': return generateReport(d.date);
     case 'delday':
