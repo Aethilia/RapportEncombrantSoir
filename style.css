@@ -214,3 +214,17 @@ main.pull .type-card { display: flex; align-items: center; gap: 16px; width: 100
 textarea { resize: vertical; min-height: 88px; line-height: 1.4; }
 .btn.listening { background: var(--danger); color: #fff !important; box-shadow: none; animation: rec-pulse 1.2s ease-in-out infinite; }
 @keyframes rec-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 25%, transparent); } }
+
+/* ---------- Détail d'un contrôle ---------- */
+.ctrl.tap { cursor: pointer; }
+.ctrl.tap:active { transform: scale(.99); }
+.section-title .muted { color: var(--muted); font-weight: 500; font-size: 12.5px; text-transform: none; letter-spacing: 0; }
+.kv { display: flex; justify-content: space-between; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+.kv:last-child { border-bottom: 0; }
+.kv span { color: var(--muted); font-size: 14px; flex: none; }
+.kv b { text-align: right; font-weight: 650; overflow-wrap: anywhere; }
+button.thumb { border: 0; padding: 0; cursor: pointer; }
+.thumb.missing::after { content: 'Indisponible'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: var(--muted); }
+.btn.danger { color: var(--danger); }
+.viewer { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92); display: grid; place-items: center; padding: 16px; cursor: zoom-out; }
+.viewer img { max-width: 100%; max-height: 100%; border-radius: 10px; }

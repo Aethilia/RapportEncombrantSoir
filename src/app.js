@@ -40,6 +40,7 @@ let histAll = false;
 let wizard = null; // { step, date, time, address, num, operation, conclusion, photos: [{ id, dataUrl, w, h }] }
 const MAX_PHOTOS = 8;
 let stopListening = null; // saisie vocale en cours
+let detail = null; // identifiant du contrôle affiché en détail
 
 /* ---------- Thème ---------- */
 const THEMES = ['auto', 'light', 'dark'];
@@ -84,7 +85,7 @@ function themeBtn() {
 }
 
 function controlCard(c, withDelete = true, author = false) {
-  return `<div class="card ctrl"><div class="time">${esc(c.time.replace(':', 'h'))}<small>${esc(c.date.slice(8))}/${esc(c.date.slice(5, 7))}</small></div>
+  return `<div class="card ctrl tap" data-open="${c.id}" role="button" tabindex="0" aria-label="Voir le détail"><div class="time">${esc(c.time.replace(':', 'h'))}<small>${esc(c.date.slice(8))}/${esc(c.date.slice(5, 7))}</small></div>
     <div class="body"><div class="addr">${ic('pin', 16)}<span>${esc(c.address)}${c.num ? ' · n°' + esc(c.num) : ''}</span></div>
       <div><span class="tag">${esc(c.operation)}</span><span class="tag">${esc(c.conclusion)}</span>${c.photos?.length ? `<span class="tag photo-tag">${ic('camera', 13)}${c.photos.length}</span>` : ''}${author ? `<span class="tag who">${esc(c.user ?? '')}</span>` : ''}</div></div>
     ${withDelete ? `<button class="del" data-delc="${c.id}" aria-label="Supprimer">${ic('trash', 20)}</button>` : ''}</div>`;
@@ -136,7 +137,7 @@ function renderHome() {
     `<main class="pull">
       <div class="stats"><div class="card stat"><b>${list.length}</b><span>contrôle${list.length > 1 ? 's' : ''} aujourd’hui</span></div>
         <div class="card stat"><b>${last}</b><span>dernier contrôle</span></div></div>
-      <div class="section-title"><span>Contrôles du jour</span></div>
+      <div class="section-title"><span>Contrôles du jour</span>${list.length ? '<small class="muted">Touchez pour le détail</small>' : ''}</div>
       <div class="list">${list.map(c => controlCard(c)).join('') || `<div class="card empty">${ic('inbox', 34)}<div>Aucun contrôle pour le moment</div></div>`}</div>
       <button class="btn end" data-act="finish" ${list.length ? '' : 'disabled'}>${ic('download', 20)}Fin &amp; générer l’Excel</button>
     </main>
@@ -217,6 +218,40 @@ function fillFromVoice() {
   render();
 }
 
+function renderDetail() {
+  const s = store.get();
+  const c = s.controls.find(x => String(x.id) === String(detail));
+  if (!c) { detail = null; return render(); }
+  const row = (label, value) => value ? `<div class="kv"><span>${label}</span><b>${esc(value)}</b></div>` : '';
+  const ids = c.photos ?? [];
+  const mine = c.user === s.currentUser;
+  app.innerHTML = hero('<h1 class="title">Détail du contrôle</h1>', true, false) +
+    `<main class="top"><div class="card panel">
+      ${row('Date', longDate(isoToDate(c.date)))}${row('Heure', c.time.replace(':', 'h'))}
+      ${row('Adresse', c.address)}${row('N°', c.num)}
+      ${row('Opération', c.operation)}${row('Conclusion', c.conclusion)}
+      ${row('Type', store.TYPES[store.typeOf(c)]?.label)}${row('Agent', c.user)}</div>
+      <div class="card panel"><label style="margin:0">Photos (${ids.length})</label>
+      ${ids.length ? `<div class="thumbs">${ids.map((id, i) => `<button class="thumb" data-act="photo-view" data-pid="${esc(id)}" aria-label="Agrandir la photo ${i + 1}"><img alt="Photo ${i + 1}"></button>`).join('')}</div>` : '<p class="hint">Aucune photo</p>'}</div>
+    </main>
+    <div class="nav2"><button class="btn alt" data-act="detail-close">${ic('back', 20)}Retour</button>
+    ${mine ? `<button class="btn alt danger" data-act="detail-del">${ic('trash', 20)}Supprimer</button>` : ''}</div>`;
+  for (const id of ids) {
+    photos.getPhoto(id).then(p => {
+      const img = app.querySelector(`[data-pid="${CSS.escape(id)}"] img`);
+      if (!img) return;
+      if (p) img.src = p.dataUrl; else img.closest('.thumb').classList.add('missing');
+    });
+  }
+}
+
+function viewPhoto(src) {
+  if (!src) return;
+  const v = Object.assign(document.createElement('div'), { className: 'viewer', innerHTML: `<img src="${src}" alt="Photo">` });
+  v.addEventListener('click', () => v.remove());
+  document.body.append(v);
+}
+
 function renderTeamJoin() {
   app.innerHTML = hero(`<h1 class="title">Rejoindre l’équipe</h1><div class="date" style="opacity:.85;margin-top:4px;position:relative;z-index:1">Tous les téléphones qui saisissent le même code partagent utilisateurs, listes et contrôles.</div>`, true) +
     `<main class="top"><div class="card panel"><label for="in-team">Code d’équipe</label>
@@ -286,6 +321,7 @@ function render() {
   if (!s.currentUser) return renderUserPicker();
   if (!store.TYPES[s.type]) return renderTypePicker();
   if (wizard) return renderWizard();
+  if (detail) return renderDetail();
   ({ history: renderHistory, lists: renderLists, users: renderUsers }[tab] ?? renderHome)();
 }
 
@@ -327,9 +363,13 @@ async function generateReport(date = store.todayISO()) {
 /* ---------- Événements ---------- */
 app.addEventListener('click', e => {
   const t = e.target.closest('button');
-  if (!t) return;
+  if (!t) {
+    const card = e.target.closest('[data-open]');
+    if (card) { detail = card.dataset.open; window.scrollTo(0, 0); render(); }
+    return;
+  }
   const d = t.dataset;
-  if (d.tab) { tab = d.tab; window.scrollTo(0, 0); return render(); }
+  if (d.tab) { detail = null; tab = d.tab; window.scrollTo(0, 0); return render(); }
   if (d.user) { store.set({ currentUser: d.user, type: '' }); tab = 'home'; return render(); }
   if (d.type) { store.set({ type: d.type }); tab = 'home'; return render(); }
   if (d.add) {
@@ -348,6 +388,11 @@ app.addEventListener('click', e => {
   if (d.pick) { syncWizardInputs(); wizard[d.pick] = d.v; return render(); }
   switch (d.act) {
     case 'theme': return cycleTheme();
+    case 'detail-close': detail = null; return render();
+    case 'detail-del':
+      if (confirm('Supprimer ce contrôle ?')) { store.removeControl(detail); detail = null; render(); }
+      return;
+    case 'photo-view': return viewPhoto(t.querySelector('img')?.src);
     case 'voice-on': store.set({ voice: true }); toast('Saisie vocale activée'); return render();
     case 'voice-off': store.set({ voice: false }); toast('Saisie vocale désactivée'); return render();
     case 'voice-mic': {
@@ -383,8 +428,8 @@ app.addEventListener('click', e => {
     case 'leave':
       if (confirm('Quitter l’équipe ? Les données déjà reçues restent sur ce téléphone.')) { store.set({ team: '' }); location.reload(); }
       return;
-    case 'switch': store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
-    case 'change-type': store.set({ type: '' }); tab = 'home'; return render();
+    case 'switch': detail = null; store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
+    case 'change-type': detail = null; store.set({ type: '' }); tab = 'home'; return render();
     case 'start': wizard = { step: 0, date: store.todayISO(), time: nowHM(), address: '', num: '', operation: '', conclusion: '', photos: [], heard: '' }; return render();
     case 'back': endListening(); syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
     case 'photo-cam': return document.getElementById('w-photo-cam')?.click();
@@ -435,6 +480,8 @@ app.addEventListener('change', async e => {
 
 app.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
+  const card = e.target.closest?.('[data-open]');
+  if (card && e.target === card) { detail = card.dataset.open; return render(); }
   const input = e.target.closest('input[id^="in-"]');
   if (!input) return;
   const btn = app.querySelector(input.id === 'in-team' ? '[data-act="join"]' : `[data-add="${input.id.slice(3)}"]`);
