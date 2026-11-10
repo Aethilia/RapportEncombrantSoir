@@ -27,8 +27,8 @@ export function listen({ onText, onEnd, onError }) {
 }
 
 /* ---------- Mot de fin ---------- */
-// « … fin », « fin du contrôle », « terminé », « clôturer », « enregistrer » en DERNIER mot : clôture le contrôle.
-const END_RE = /[\s,;.!?]*\b(fin(\s+d[ue]\s+(controle|saisie))?|termine[e]?|c'?est\s+termine|cloture[rz]?|cloture|enregistre[rz]?|valide[rz]?)[\s,;.!?]*$/;
+// « … fin de contrôle » (ou « fin du contrôle ») en DERNIERS mots : clôture le contrôle.
+const END_RE = /[\s,;.!?]*\bfin\s+d[ue]\s+controles?[\s,;.!?]*$/;
 
 // Renvoie le texte sans le mot de fin s'il est présent à la fin, sinon null.
 export function endCommand(text) {
