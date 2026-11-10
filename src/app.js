@@ -2,6 +2,7 @@ import * as store from './store.js';
 import { buildFile, downloadFile, frDate, frShort } from './export.js';
 import * as sync from './sync.js';
 import * as photos from './photos.js';
+import * as voice from './voice.js';
 
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,6 +29,7 @@ const PATHS = {
   box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5a4 4 0 0 0 8 0h5"/>',
 };
 const ic = (n, size = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[n]}</svg>`;
@@ -37,6 +39,7 @@ let syncStatus = ''; // '' | ok | offline | error
 let histAll = false;
 let wizard = null; // { step, date, time, address, num, operation, conclusion, photos: [{ id, dataUrl, w, h }] }
 const MAX_PHOTOS = 8;
+let stopListening = null; // saisie vocale en cours
 
 /* ---------- Thème ---------- */
 const THEMES = ['auto', 'light', 'dark'];
@@ -176,6 +179,44 @@ function teamBlock() {
     <button class="btn small alt" data-act="leave">${ic('back', 17)}Quitter l’équipe</button></div>`;
 }
 
+function optionsBlock() {
+  const on = !!store.get().voice;
+  return `<div class="section-title"><span>Options</span></div>
+    <div class="card panel"><label style="margin:0">${ic('mic', 17)} Saisie vocale</label>
+    <div class="seg"><button data-act="voice-off" class="${on ? '' : 'on'}">Désactivée</button><button data-act="voice-on" class="${on ? 'on' : ''}">Activée</button></div>
+    <p class="hint" style="text-align:left;padding:0 2px">Ajoute un bouton « Dicter » au début d’un contrôle : l’appli remplit l’heure, l’adresse, l’opération et la conclusion à partir de ce que vous dites. Réglage propre à ce téléphone.</p></div>`;
+}
+
+function voiceCard() {
+  const w = wizard;
+  const mic = voice.supported
+    ? `<button class="btn small ${stopListening ? 'listening' : 'ghost'}" data-act="voice-mic">${ic('mic', 17)}${stopListening ? 'Arrêter' : 'Parler'}</button>`
+    : '';
+  return `<div class="card panel"><label for="w-voice">${ic('mic', 17)} Dicter le contrôle</label>
+    <textarea id="w-voice" rows="3" placeholder="Ex. « 22h15, avenue Jean Médecin numéro 12, dépôt sauvage, conclusion signalement mairie »">${esc(w.heard)}</textarea>
+    <p class="hint" style="text-align:left;padding:0 2px">${voice.supported ? 'Touchez « Parler », dites le contrôle, puis « Remplir ».' : 'Touchez la zone ci-dessus puis le micro du clavier pour dicter, puis « Remplir ».'} Pour un élément hors liste, dites « opération … » ou « conclusion … ».</p>
+    <div class="day-actions">${mic}<button class="btn small" data-act="voice-fill" ${w.heard.trim() ? '' : 'disabled'}>${ic('check', 17)}Remplir</button></div></div>`;
+}
+
+function endListening() {
+  stopListening?.();
+  stopListening = null;
+}
+
+function fillFromVoice() {
+  endListening();
+  const w = wizard;
+  const r = voice.parse(w.heard, { operations: store.listOf('operations'), conclusions: store.listOf('conclusions'), today: store.todayISO() });
+  const fields = ['date', 'time', 'address', 'num', 'operation', 'conclusion'].filter(f => r[f]);
+  if (!fields.length) return toast('Rien reconnu, réessayez');
+  for (const f of fields) w[f] = r[f];
+  // On ouvre la première étape à compléter, sinon la dernière (photos) pour vérifier.
+  const missing = [!w.address, !w.operation, !w.conclusion].indexOf(true);
+  w.step = missing < 0 ? 3 : missing + 1;
+  toast('Pré-rempli : vérifiez avant d’enregistrer');
+  render();
+}
+
 function renderTeamJoin() {
   app.innerHTML = hero(`<h1 class="title">Rejoindre l’équipe</h1><div class="date" style="opacity:.85;margin-top:4px;position:relative;z-index:1">Tous les téléphones qui saisissent le même code partagent utilisateurs, listes et contrôles.</div>`, true) +
     `<main class="top"><div class="card panel"><label for="in-team">Code d’équipe</label>
@@ -187,7 +228,7 @@ function renderTeamJoin() {
 function renderUsers() {
   app.innerHTML = hero('<h1 class="title">Utilisateurs</h1>', true) +
     `<main class="top">${manager('users', 'Utilisateurs', 'Nom Prénom')}
-      ${teamBlock()}</main>` + tabs();
+      ${optionsBlock()}${teamBlock()}</main>` + tabs();
 }
 
 function renderUserPicker() {
@@ -209,7 +250,7 @@ function renderWizard() {
   const pick = (list, key) => `<div class="pick">${list.map(v => `<button data-pick="${key}" data-v="${esc(v)}" class="${w[key] === v ? 'on' : ''}">${esc(v)}${w[key] === v ? ic('check', 20) : ''}</button>`).join('')}</div>`;
   let body, ok;
   if (w.step === 0) {
-    body = `<div class="card panel"><label for="w-date">Date du contrôle</label><input id="w-date" type="date" value="${esc(w.date)}">
+    body = (store.get().voice ? voiceCard() : '') + `<div class="card panel"><label for="w-date">Date du contrôle</label><input id="w-date" type="date" value="${esc(w.date)}">
       <label for="w-time">Heure du contrôle</label><input id="w-time" type="time" value="${esc(w.time)}"></div>`;
     ok = !!(w.date && w.time);
   } else if (w.step === 1) {
@@ -255,6 +296,8 @@ function syncWizardInputs() {
   if (wizard.step === 0) {
     wizard.date = v('w-date') ?? wizard.date;
     wizard.time = v('w-time') ?? wizard.time;
+    const heard = document.getElementById('w-voice')?.value;
+    if (heard !== undefined) wizard.heard = heard;
   }
   if (wizard.step === 1) {
     wizard.address = v('w-addr') ?? wizard.address;
@@ -305,6 +348,29 @@ app.addEventListener('click', e => {
   if (d.pick) { syncWizardInputs(); wizard[d.pick] = d.v; return render(); }
   switch (d.act) {
     case 'theme': return cycleTheme();
+    case 'voice-on': store.set({ voice: true }); toast('Saisie vocale activée'); return render();
+    case 'voice-off': store.set({ voice: false }); toast('Saisie vocale désactivée'); return render();
+    case 'voice-mic': {
+      syncWizardInputs();
+      if (stopListening) { endListening(); return render(); }
+      const before = wizard.heard.trim();
+      try {
+        stopListening = voice.listen({
+          onText: txt => {
+            if (!wizard) return;
+            wizard.heard = (before ? before + ' ' : '') + txt;
+            const ta = document.getElementById('w-voice');
+            if (ta) ta.value = wizard.heard;
+            const fill = app.querySelector('[data-act="voice-fill"]');
+            if (fill) fill.disabled = !wizard.heard.trim();
+          },
+          onEnd: () => { stopListening = null; if (wizard?.step === 0) render(); },
+          onError: err => toast(err === 'not-allowed' || err === 'service-not-allowed' ? 'Micro refusé : autorisez-le dans les réglages' : err === 'no-speech' ? 'Je n’ai rien entendu' : 'Micro indisponible'),
+        });
+      } catch (err) { console.error(err); stopListening = null; toast('Micro indisponible'); }
+      return render();
+    }
+    case 'voice-fill': syncWizardInputs(); return fillFromVoice();
     case 'hist-me': histAll = false; return render();
     case 'hist-all': histAll = true; return render();
     case 'join': {
@@ -319,12 +385,13 @@ app.addEventListener('click', e => {
       return;
     case 'switch': store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
     case 'change-type': store.set({ type: '' }); tab = 'home'; return render();
-    case 'start': wizard = { step: 0, date: store.todayISO(), time: nowHM(), address: '', num: '', operation: '', conclusion: '', photos: [] }; return render();
-    case 'back': syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
+    case 'start': wizard = { step: 0, date: store.todayISO(), time: nowHM(), address: '', num: '', operation: '', conclusion: '', photos: [], heard: '' }; return render();
+    case 'back': endListening(); syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
     case 'photo-cam': return document.getElementById('w-photo-cam')?.click();
     case 'photo-gal': return document.getElementById('w-photo-gal')?.click();
     case 'photo-del': syncWizardInputs(); wizard.photos.splice(Number(d.i), 1); return render();
     case 'next':
+      endListening();
       syncWizardInputs();
       if (wizard.step < 3) { wizard.step++; return render(); }
       // Les saisies manuelles restent dans le contrôle : elles ne sont pas ajoutées aux listes.
@@ -347,6 +414,8 @@ app.addEventListener('click', e => {
 app.addEventListener('input', () => {
   if (!wizard) return;
   syncWizardInputs();
+  const fill = app.querySelector('[data-act="voice-fill"]');
+  if (fill) fill.disabled = !wizard.heard?.trim();
   const next = app.querySelector('[data-act="next"]');
   const ok = [wizard.date && wizard.time, wizard.address, wizard.operation, wizard.conclusion][wizard.step];
   if (next) next.disabled = !ok;
@@ -377,7 +446,7 @@ function renderRemote() {
   clearTimeout(renderTimer);
   renderTimer = setTimeout(() => {
     // Ne pas casser une saisie en cours ni l'assistant.
-    if (wizard || app.contains(document.activeElement) && document.activeElement.matches('input, select')) return;
+    if (wizard || app.contains(document.activeElement) && document.activeElement.matches('input, select, textarea')) return;
     render();
   }, 150);
 }

@@ -18,6 +18,7 @@ const DEFAULTS = {
   },
   controls: [], // { id, type, date:'YYYY-MM-DD', time:'HH:MM', address, num, operation, conclusion, user }
   theme: 'auto', // auto | light | dark
+  voice: false, // saisie vocale (option) — local à chaque téléphone
   team: '', // code d'équipe (synchronisation)
 };
 
