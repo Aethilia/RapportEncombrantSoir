@@ -117,6 +117,16 @@ export function addControl(c, shots = []) {
   hooks.controlAdd?.(control);
 }
 
+// Modifie un contrôle existant (date, heure, adresse, n°, opération, conclusion).
+export function updateControl(id, patch) {
+  let updated = null;
+  const controls = state.controls.map(c => (String(c.id) === String(id) ? (updated = { ...c, ...patch }) : c));
+  if (!updated) return null;
+  set({ controls });
+  hooks.controlAdd?.(updated); // même document côté serveur : il est réécrit
+  return updated;
+}
+
 // Supprime aussi les photos des contrôles retirés (sur ce téléphone et sur le serveur).
 function dropPhotos(list) {
   const ids = list.flatMap(c => c.photos ?? []);

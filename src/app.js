@@ -30,6 +30,7 @@ const PATHS = {
   camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
   inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5a4 4 0 0 0 8 0h5"/>',
 };
 const ic = (n, size = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[n]}</svg>`;
@@ -40,6 +41,9 @@ let histAll = false;
 let wizard = null; // { step, date, time, address, num, operation, conclusion, photos: [{ id, dataUrl, w, h }] }
 const MAX_PHOTOS = 8;
 let stopListening = null; // saisie vocale en cours
+let openCtrl = null; // contrôle déroulé (id)
+let editCtrl = null; // contrôle en cours de modification (id)
+const openDays = new Set(); // jours ouverts dans l'historique
 
 /* ---------- Thème ---------- */
 const THEMES = ['auto', 'light', 'dark'];
@@ -83,11 +87,50 @@ function themeBtn() {
   return `<button class="icon-btn" data-act="theme" aria-label="Thème : ${THEME_LABEL[t]}">${ic(t === 'light' ? 'sun' : t === 'dark' ? 'moon' : 'auto', 20)}</button>`;
 }
 
-function controlCard(c, withDelete = true, author = false) {
-  return `<div class="card ctrl"><div class="time">${esc(c.time.replace(':', 'h'))}<small>${esc(c.date.slice(8))}/${esc(c.date.slice(5, 7))}</small></div>
-    <div class="body"><div class="addr">${ic('pin', 16)}<span>${esc(c.address)}${c.num ? ' · n°' + esc(c.num) : ''}</span></div>
+// Carte d'un contrôle : un appui l'ouvre (détail complet), « Modifier » permet de corriger chaque champ.
+function controlCard(c, { del = true, author = false, edit = true } = {}) {
+  const id = String(c.id);
+  const open = openCtrl === id, editing = edit && editCtrl === id;
+  const numTxt = c.num ? ' · n°' + esc(c.num) : '';
+  let detail = '';
+  if (editing) {
+    const opts = (list, name) => `<datalist id="dl-${name}">${store.listOf(list).map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
+    detail = `<div class="ctrl-detail edit">
+      <div class="two"><div><label for="e-date">Date</label><input id="e-date" type="date" value="${esc(c.date)}"></div>
+        <div><label for="e-time">Heure</label><input id="e-time" type="time" value="${esc(c.time)}"></div></div>
+      <div class="two addr-row"><div><label for="e-addr">Adresse (voie)</label><input id="e-addr" value="${esc(c.address)}" autocomplete="off"></div>
+        <div><label for="e-num">N°</label><input id="e-num" inputmode="numeric" value="${esc(c.num)}" autocomplete="off"></div></div>
+      <div><label for="e-op">Opération</label><input id="e-op" list="dl-op" value="${esc(c.operation)}" autocomplete="off">${opts('operations', 'op')}</div>
+      <div><label for="e-cc">Conclusion</label><input id="e-cc" list="dl-cc" value="${esc(c.conclusion)}" autocomplete="off">${opts('conclusions', 'cc')}</div>
+      <div class="day-actions"><button class="btn small alt" data-act="edit-cancel">Annuler</button>
+        <button class="btn small" data-act="edit-save" data-id="${esc(id)}">${ic('check', 17)}Enregistrer</button></div></div>`;
+  } else if (open) {
+    const row = (k, v) => `<div class="kv"><span>${k}</span><b>${v || '—'}</b></div>`;
+    detail = `<div class="ctrl-detail">
+      ${row('Date', esc(longDate(isoToDate(c.date)) + ' ' + c.date.slice(0, 4)))}${row('Heure', esc(c.time.replace(':', 'h')))}
+      ${row('Adresse', esc(c.address))}${row('N°', esc(c.num))}
+      ${row('Opération', esc(c.operation))}${row('Conclusion', esc(c.conclusion))}
+      ${row('Agent', esc(c.user ?? ''))}
+      ${c.photos?.length ? `<div class="thumbs det-thumbs" data-ids="${esc(c.photos.join(','))}"></div>` : ''}
+      ${edit ? `<div class="day-actions"><button class="btn small ghost" data-act="edit" data-id="${esc(id)}">${ic('edit', 17)}Modifier</button></div>` : ''}</div>`;
+  }
+  return `<div class="card ctrl ${open ? 'open' : ''}"><div class="ctrl-row" data-open="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}">
+    <div class="time">${esc(c.time.replace(':', 'h'))}<small>${esc(c.date.slice(8))}/${esc(c.date.slice(5, 7))}</small></div>
+    <div class="body"><div class="addr">${ic('pin', 16)}<span>${esc(c.address)}${numTxt}</span></div>
       <div><span class="tag">${esc(c.operation)}</span><span class="tag">${esc(c.conclusion)}</span>${c.photos?.length ? `<span class="tag photo-tag">${ic('camera', 13)}${c.photos.length}</span>` : ''}${author ? `<span class="tag who">${esc(c.user ?? '')}</span>` : ''}</div></div>
-    ${withDelete ? `<button class="del" data-delc="${c.id}" aria-label="Supprimer">${ic('trash', 20)}</button>` : ''}</div>`;
+    ${ic('chev', 18).replace('class="ic"', 'class="ic chev"')}
+    ${del ? `<button class="del" data-delc="${c.id}" aria-label="Supprimer">${ic('trash', 20)}</button>` : ''}</div>${detail}</div>`;
+}
+
+// Miniatures des photos du contrôle ouvert (chargées à la demande).
+function loadDetailPhotos() {
+  for (const box of app.querySelectorAll('.det-thumbs[data-ids]')) {
+    const ids = box.dataset.ids.split(',').filter(Boolean);
+    box.removeAttribute('data-ids');
+    Promise.all(ids.map(id => photos.getPhoto(id).catch(() => null))).then(list => {
+      box.innerHTML = list.filter(Boolean).map((p, i) => `<div class="thumb"><img src="${p.dataUrl}" alt="Photo ${i + 1}"></div>`).join('');
+    });
+  }
 }
 
 function manager(list, label, placeholder) {
@@ -140,7 +183,7 @@ function renderHome() {
       <div class="list">${list.map(c => controlCard(c)).join('') || `<div class="card empty">${ic('inbox', 34)}<div>Aucun contrôle pour le moment</div></div>`}</div>
       <button class="btn end" data-act="finish" ${list.length ? '' : 'disabled'}>${ic('download', 20)}Fin &amp; générer l’Excel</button>
     </main>
-    <button class="btn fab" data-act="start">${ic('plus', 22)}Commencer</button>` + tabs();
+    <button class="btn fab ${editCtrl ? 'hidden' : ''}" data-act="start">${ic('plus', 22)}Commencer</button>` + tabs();
 }
 
 function renderHistory() {
@@ -151,10 +194,10 @@ function renderHistory() {
     const list = histAll ? store.controlsOfAll(date) : store.controlsOf(date, s.currentUser);
     const d = isoToDate(date);
     const label = date === today ? 'Aujourd’hui' : longDate(d);
-    return `<details class="card day"><summary>
+    return `<details class="card day" data-day="${date}" ${openDays.has(date) ? 'open' : ''}><summary>
         <div class="day-badge"><b>${d.getDate()}</b><small>${d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')}</small></div>
         <div><div class="day-title">${esc(label)}</div><div class="day-sub">${list.length} contrôle${list.length > 1 ? 's' : ''}</div></div>${ic('chev', 20).replace('class="ic"', 'class="ic chev"')}</summary>
-      <div class="day-body">${list.map(c => controlCard(c, false, histAll)).join('')}
+      <div class="day-body">${list.map(c => controlCard(c, { del: false, author: histAll, edit: c.user === s.currentUser })).join('')}
         ${histAll ? '' : `<div class="day-actions"><button class="btn small ghost" data-act="resend" data-date="${date}">${ic('download', 17)}Télécharger l’Excel</button>
         <button class="btn small alt" data-act="delday" data-date="${date}">${ic('trash', 17)}Supprimer</button></div>`}</div></details>`;
   }).join('');
@@ -287,6 +330,22 @@ function render() {
   if (!store.TYPES[s.type]) return renderTypePicker();
   if (wizard) return renderWizard();
   ({ history: renderHistory, lists: renderLists, users: renderUsers }[tab] ?? renderHome)();
+  loadDetailPhotos();
+}
+
+function saveEdit(id) {
+  const v = k => document.getElementById('e-' + k)?.value.trim() ?? '';
+  const patch = { date: v('date'), time: v('time'), address: v('addr'), num: v('num'), operation: v('op'), conclusion: v('cc') };
+  if (!patch.date || !patch.time) return toast('Date et heure obligatoires');
+  if (!patch.address) return toast('Adresse obligatoire');
+  if (!patch.operation || !patch.conclusion) return toast('Opération et conclusion obligatoires');
+  const before = store.get().controls.find(c => String(c.id) === String(id));
+  store.updateControl(id, patch);
+  editCtrl = null;
+  if (before && before.date !== patch.date) openDays.add(patch.date);
+  toast(before && before.date !== patch.date && tab === 'home' && patch.date !== store.todayISO()
+    ? `Contrôle déplacé au ${frShort(patch.date)} (voir Historique)` : 'Contrôle modifié');
+  render();
 }
 
 /* ---------- Assistant : lecture des champs ---------- */
@@ -327,9 +386,16 @@ async function generateReport(date = store.todayISO()) {
 /* ---------- Événements ---------- */
 app.addEventListener('click', e => {
   const t = e.target.closest('button');
-  if (!t) return;
+  if (!t) {
+    const row = e.target.closest('[data-open]');
+    if (!row) return;
+    const id = row.dataset.open;
+    openCtrl = openCtrl === id ? null : id;
+    if (editCtrl && editCtrl !== openCtrl) editCtrl = null;
+    return render();
+  }
   const d = t.dataset;
-  if (d.tab) { tab = d.tab; window.scrollTo(0, 0); return render(); }
+  if (d.tab) { tab = d.tab; openCtrl = editCtrl = null; window.scrollTo(0, 0); return render(); }
   if (d.user) { store.set({ currentUser: d.user, type: '' }); tab = 'home'; return render(); }
   if (d.type) { store.set({ type: d.type }); tab = 'home'; return render(); }
   if (d.add) {
@@ -371,6 +437,9 @@ app.addEventListener('click', e => {
       return render();
     }
     case 'voice-fill': syncWizardInputs(); return fillFromVoice();
+    case 'edit': openCtrl = editCtrl = d.id; return render();
+    case 'edit-cancel': editCtrl = null; return render();
+    case 'edit-save': return saveEdit(d.id);
     case 'hist-me': histAll = false; return render();
     case 'hist-all': histAll = true; return render();
     case 'join': {
@@ -383,7 +452,7 @@ app.addEventListener('click', e => {
     case 'leave':
       if (confirm('Quitter l’équipe ? Les données déjà reçues restent sur ce téléphone.')) { store.set({ team: '' }); location.reload(); }
       return;
-    case 'switch': store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
+    case 'switch': openCtrl = editCtrl = null; store.set({ currentUser: null, type: '' }); tab = 'home'; return render();
     case 'change-type': store.set({ type: '' }); tab = 'home'; return render();
     case 'start': wizard = { step: 0, date: store.todayISO(), time: nowHM(), address: '', num: '', operation: '', conclusion: '', photos: [], heard: '' }; return render();
     case 'back': endListening(); syncWizardInputs(); if (wizard.step) wizard.step--; else wizard = null; return render();
@@ -433,7 +502,15 @@ app.addEventListener('change', async e => {
   render();
 });
 
+// Mémorise les jours ouverts de l'historique (les re-rendus ne les referment pas).
+app.addEventListener('toggle', e => {
+  const day = e.target.closest?.('details[data-day]');
+  if (!day) return;
+  if (day.open) openDays.add(day.dataset.day); else openDays.delete(day.dataset.day);
+}, true);
+
 app.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-open]')) { e.preventDefault(); return e.target.click(); }
   if (e.key !== 'Enter') return;
   const input = e.target.closest('input[id^="in-"]');
   if (!input) return;
@@ -446,7 +523,7 @@ function renderRemote() {
   clearTimeout(renderTimer);
   renderTimer = setTimeout(() => {
     // Ne pas casser une saisie en cours ni l'assistant.
-    if (wizard || app.contains(document.activeElement) && document.activeElement.matches('input, select, textarea')) return;
+    if (wizard || editCtrl || app.contains(document.activeElement) && document.activeElement.matches('input, select, textarea')) return;
     render();
   }, 150);
 }

@@ -73,7 +73,9 @@ main.top { padding-top: 18px; }
 .section-title { display: flex; align-items: center; justify-content: space-between; margin: 6px 4px 0; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 
 .list { display: flex; flex-direction: column; gap: 10px; }
-.ctrl { padding: 14px 14px 14px 12px; display: flex; gap: 12px; align-items: center; }
+.ctrl { padding: 14px 10px 14px 12px; }
+.ctrl-row { display: flex; gap: 12px; align-items: center; cursor: pointer; }
+.ctrl-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; border-radius: 12px; }
 .time { flex: none; min-width: 62px; padding: 8px 6px; text-align: center; border-radius: 14px; background: var(--soft); color: var(--brand); font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
 .ctrl .body { flex: 1; min-width: 0; }
 .ctrl .addr { font-weight: 650; display: flex; align-items: center; gap: 6px; }
@@ -153,7 +155,7 @@ details.day[open] summary .ic.chev { transform: rotate(90deg); }
 .day-title { font-weight: 700; }
 .day-sub { color: var(--muted); font-size: 13.5px; }
 .day-body { padding: 0 12px 14px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
-.day-body .ctrl { box-shadow: none; background: var(--bg); border-radius: 16px; padding: 10px 12px 10px 10px; }
+.day-body .ctrl { box-shadow: none; background: var(--bg); border-radius: 16px; padding: 10px 10px 10px 10px; }
 .day-actions { display: flex; gap: 8px; margin-top: 4px; }
 .day-actions .btn { flex: 1; }
 
@@ -214,3 +216,19 @@ main.pull .type-card { display: flex; align-items: center; gap: 16px; width: 100
 textarea { resize: vertical; min-height: 88px; line-height: 1.4; }
 .btn.listening { background: var(--danger); color: #fff !important; box-shadow: none; animation: rec-pulse 1.2s ease-in-out infinite; }
 @keyframes rec-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 25%, transparent); } }
+
+/* ---------- Détail / modification d'un contrôle ---------- */
+.ctrl-row > .ic.chev { color: var(--muted); transition: transform .2s; }
+.ctrl.open .ctrl-row > .ic.chev { transform: rotate(90deg); color: var(--brand); }
+.ctrl.open .addr span { white-space: normal; }
+.ctrl-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; animation: up .25s both; }
+.kv { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+.kv span { color: var(--muted); flex: none; }
+.kv b { font-weight: 650; text-align: right; overflow-wrap: anywhere; }
+.ctrl-detail.edit { gap: 12px; }
+.ctrl-detail.edit label { margin-bottom: 6px; }
+.ctrl-detail.edit input { padding: 12px 14px; font-size: 16px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.two.addr-row { grid-template-columns: 1fr 84px; }
+.two > div { min-width: 0; }
+.fab.hidden { display: none; }
