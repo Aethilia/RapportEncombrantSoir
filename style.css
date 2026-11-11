@@ -239,3 +239,6 @@ textarea { resize: vertical; min-height: 88px; line-height: 1.4; }
 .sugs button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); color: var(--fg); font: inherit; font-size: 15.5px; cursor: pointer; }
 .sugs button .ic { color: var(--brand); }
 .sugs button:active { transform: scale(.99); }
+
+/* En-tête sans logo : boutons à droite */
+.hero-actions { margin-left: auto; }

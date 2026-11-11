@@ -185,7 +185,6 @@ function typeChip() {
 function hero(inner = '', compact = false, chip = true) {
   const s = store.get();
   return `<div class="hero ${compact ? 'compact' : ''}"><div class="hero-top">
-    <img class="logo" src="icons/logo.png" alt="Métropole Nice Côte d’Azur">
     <div class="hero-actions">${themeBtn()}${s.currentUser ? `<button class="avatar" data-act="switch" aria-label="Changer d’utilisateur">${esc(initials(s.currentUser))}</button>` : ''}</div></div>${inner}${chip ? typeChip() : ''}</div>`;
 }
 
