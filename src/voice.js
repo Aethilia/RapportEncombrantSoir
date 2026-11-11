@@ -202,14 +202,23 @@ export function parse(text, { operations = [], conclusions = [], today }) {
   let cur = [];
   toks.forEach((t, k) => { if (used[k]) { if (cur.length) runs.push(cur); cur = []; } else cur.push(k); });
   if (cur.length) runs.push(cur);
-  let run = runs.find(rn => rn.some(k => STREET.has(n(k))));
-  if (run) run = run.slice(run.findIndex(k => STREET.has(n(k))));
-  else run = runs.sort((a, b) => b.length - a.length)[0];
+  // Angle de deux voies : « à l'angle de la rue X et de la rue Y », « au coin de X et Y ».
+  const angleRun = runs.find(rn => rn.some(k => /^(angle|angles|coin)$/.test(n(k))));
+  let run, angle = false;
+  if (angleRun) {
+    angle = true;
+    run = angleRun.slice(angleRun.findIndex(k => /^(angle|angles|coin)$/.test(n(k))) + 1);
+    while (run.length && (LEAD.has(n(run[0])) || ['de', 'du', 'des', 'd', 'l'].includes(n(run[0])))) run = run.slice(1);
+  } else {
+    run = runs.find(rn => rn.some(k => STREET.has(n(k))));
+    if (run) run = run.slice(run.findIndex(k => STREET.has(n(k))));
+    else run = runs.sort((a, b) => b.length - a.length)[0];
+  }
   if (run) {
     while (run.length && LEAD.has(n(run[0]))) run = run.slice(1);
     while (run.length && TRAIL.has(n(run[run.length - 1]))) run = run.slice(0, -1);
     const addr = run.map(k => toks[k].raw).join(' ').replace(/(['’]) /g, '$1').trim();
-    if (addr) r.address = addr.charAt(0).toUpperCase() + addr.slice(1);
+    if (addr) r.address = angle ? 'Angle ' + addr : addr.charAt(0).toUpperCase() + addr.slice(1);
   }
   return r;
 }

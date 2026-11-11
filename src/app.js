@@ -3,6 +3,7 @@ import { buildFile, downloadFile, frDate, frShort } from './export.js';
 import * as sync from './sync.js';
 import * as photos from './photos.js';
 import * as voice from './voice.js';
+import * as streets from './streets.js';
 
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -87,6 +88,31 @@ function themeBtn() {
   return `<button class="icon-btn" data-act="theme" aria-label="Thème : ${THEME_LABEL[t]}">${ic(t === 'light' ? 'sun' : t === 'dark' ? 'moon' : 'auto', 20)}</button>`;
 }
 
+// Suggestions de rues (orthographe officielle) sous un champ d'adresse.
+function sugBox(target, names = []) {
+  return `<div class="sugs" id="sug-${target}">${sugItems(target, names)}</div>`;
+}
+function sugItems(target, names) {
+  return names.map(n => `<button type="button" data-act="sug" data-target="${target}" data-v="${esc(n)}">${ic('pin', 15)}<span>${esc(n)}</span></button>`).join('');
+}
+
+// Pendant la frappe : on propose les rues de Nice correspondantes (pas pour un angle, saisi librement).
+let sugTimer, sugSeq = 0;
+function suggestFor(input) {
+  clearTimeout(sugTimer);
+  const box = document.getElementById('sug-' + input.id);
+  if (!box) return;
+  const q = input.value.trim();
+  if (q.length < 3 || streets.isAngle(q)) { box.innerHTML = ''; return; }
+  const seq = ++sugSeq;
+  sugTimer = setTimeout(async () => {
+    const res = await streets.suggest(q);
+    if (seq !== sugSeq || !document.body.contains(box)) return;
+    const names = res.filter(n => n !== q);
+    box.innerHTML = sugItems(input.id, names);
+  }, 300);
+}
+
 // Carte d'un contrôle : un appui l'ouvre (détail complet), « Modifier » permet de corriger chaque champ.
 function controlCard(c, { del = true, author = false, edit = true } = {}) {
   const id = String(c.id);
@@ -98,7 +124,7 @@ function controlCard(c, { del = true, author = false, edit = true } = {}) {
     detail = `<div class="ctrl-detail edit">
       <div class="two"><div><label for="e-date">Date</label><input id="e-date" type="date" value="${esc(c.date)}"></div>
         <div><label for="e-time">Heure</label><input id="e-time" type="time" value="${esc(c.time)}"></div></div>
-      <div class="two addr-row"><div><label for="e-addr">Adresse (voie)</label><input id="e-addr" value="${esc(c.address)}" autocomplete="off"></div>
+      <div class="two addr-row"><div><label for="e-addr">Adresse (voie)</label><input id="e-addr" value="${esc(c.address)}" autocomplete="off">${sugBox('e-addr')}</div>
         <div><label for="e-num">N°</label><input id="e-num" inputmode="numeric" value="${esc(c.num)}" autocomplete="off"></div></div>
       <div><label for="e-op">Opération</label><input id="e-op" list="dl-op" value="${esc(c.operation)}" autocomplete="off">${opts('operations', 'op')}</div>
       <div><label for="e-cc">Conclusion</label><input id="e-cc" list="dl-cc" value="${esc(c.conclusion)}" autocomplete="off">${opts('conclusions', 'cc')}</div>
@@ -237,7 +263,7 @@ function voiceCard() {
     : '';
   return `<div class="card panel"><label for="w-voice">${ic('mic', 17)} Dicter le contrôle</label>
     <textarea id="w-voice" rows="3" placeholder="Ex. « 22h15, avenue Jean Médecin numéro 12, dépôt sauvage, conclusion signalement mairie »">${esc(w.heard)}</textarea>
-    <p class="hint" style="text-align:left;padding:0 2px">${voice.supported ? 'Touchez « Parler », dites le contrôle, puis « Remplir ».' : 'Touchez la zone ci-dessus puis le micro du clavier pour dicter, puis « Remplir ».'} Pour un élément hors liste, dites « opération … » ou « conclusion … ». Finissez par « fin de contrôle » pour enregistrer le contrôle directement.</p>
+    <p class="hint" style="text-align:left;padding:0 2px">${voice.supported ? 'Touchez « Parler », dites le contrôle, puis « Remplir ».' : 'Touchez la zone ci-dessus puis le micro du clavier pour dicter, puis « Remplir ».'} Pour un angle : « à l’angle de la rue X et de la rue Y ». Pour un élément hors liste, dites « opération … » ou « conclusion … ». Finissez par « fin de contrôle » pour enregistrer le contrôle directement.</p>
     <div class="day-actions">${mic}<button class="btn small" data-act="voice-fill" ${w.heard.trim() ? '' : 'disabled'}>${ic('check', 17)}Remplir</button></div></div>`;
 }
 
@@ -246,9 +272,10 @@ function endListening() {
   stopListening = null;
 }
 
-function fillFromVoice() {
+async function fillFromVoice() {
   endListening();
   const w = wizard;
+  if (w.busy) return;
   // Dicté avec « fin de contrôle » à la fin : on enregistre directement si tout est rempli.
   const stripped = voice.endCommand(w.heard);
   const close = stripped !== null;
@@ -257,8 +284,22 @@ function fillFromVoice() {
   const fields = ['date', 'time', 'address', 'num', 'operation', 'conclusion'].filter(f => r[f]);
   if (!fields.length) return toast('Rien reconnu, réessayez');
   for (const f of fields) w[f] = r[f];
+  // Orthographe officielle de la rue (ou des deux rues d'un angle) ; hors-ligne, on garde la dictée.
+  w.addrSug = [];
+  let addrSure = true;
+  if (r.address) {
+    w.busy = true;
+    toast('Vérification de l’adresse…');
+    const c = await streets.correctAddress(r.address);
+    w.busy = false;
+    if (wizard !== w) return; // contrôle annulé entre-temps
+    w.address = c.value;
+    addrSure = c.sure;
+    if (!c.sure && c.options.length > 1) w.addrSug = c.options;
+  }
   if (close) {
-    if (w.date && w.time && w.address && w.operation && w.conclusion) return saveWizard();
+    if (w.date && w.time && w.address && w.operation && w.conclusion && (addrSure || !w.addrSug.length)) return saveWizard();
+    if (w.addrSug.length) { w.step = 1; toast('Adresse à confirmer : touchez la bonne rue'); return render(); }
     toast('« Fin de contrôle » dit, mais il manque des champs : complétez puis enregistrez');
   }
   // On ouvre la première étape à compléter, sinon la dernière (photos) pour vérifier.
@@ -316,7 +357,7 @@ function renderWizard() {
       <label for="w-time">Heure du contrôle</label><input id="w-time" type="time" value="${esc(w.time)}"></div>`;
     ok = !!(w.date && w.time);
   } else if (w.step === 1) {
-    body = `<div class="card panel"><label for="w-addr">Adresse (voie)</label><input id="w-addr" placeholder="Ex. Av. Jean Médecin" value="${esc(w.address)}" autocomplete="off">
+    body = `<div class="card panel"><label for="w-addr">Adresse (voie)</label><input id="w-addr" placeholder="Ex. Av. Jean Médecin ou Angle Rue X / Rue Y" value="${esc(w.address)}" autocomplete="off">${sugBox('w-addr', w.addrSug)}
       <label for="w-num">N° (optionnel)</label><input id="w-num" inputmode="numeric" value="${esc(w.num)}" autocomplete="off"></div>`;
     ok = !!w.address;
   } else if (w.step === 2) {
@@ -461,6 +502,13 @@ app.addEventListener('click', e => {
       return render();
     }
     case 'voice-fill': syncWizardInputs(); return fillFromVoice();
+    case 'sug': {
+      const input = document.getElementById(d.target);
+      if (input) input.value = d.v;
+      document.getElementById('sug-' + d.target)?.replaceChildren();
+      if (wizard) { syncWizardInputs(); wizard.addrSug = []; app.querySelector('[data-act="next"]')?.removeAttribute('disabled'); }
+      return;
+    }
     case 'edit': openCtrl = editCtrl = d.id; return render();
     case 'edit-cancel': editCtrl = null; return render();
     case 'edit-save': return saveEdit(d.id);
@@ -499,7 +547,8 @@ app.addEventListener('click', e => {
   }
 });
 
-app.addEventListener('input', () => {
+app.addEventListener('input', e => {
+  if (e.target.id === 'w-addr' || e.target.id === 'e-addr') suggestFor(e.target);
   if (!wizard) return;
   syncWizardInputs();
   const fill = app.querySelector('[data-act="voice-fill"]');
