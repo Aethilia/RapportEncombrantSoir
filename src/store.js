@@ -141,10 +141,32 @@ export function removeControl(id) {
   hooks.controlsDel?.([id]);
 }
 
-const byTime = (a, b) => a.time.localeCompare(b.time);
+/* ---------- Service du soir (20h → 3h) ----------
+   Un contrôle fait avant SERVICE_END (après minuit) appartient au service de la veille :
+   un seul jour, un seul Excel pour toute la nuit. La date réelle du contrôle reste inchangée. */
+export const SERVICE_END = '06:00';
+
+function shiftISO(iso, days) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Jour de service d'un contrôle (date + heure).
+export const serviceOf = (date, time) => (time && time < SERVICE_END ? shiftISO(date, -1) : date);
+const svc = c => serviceOf(c.date, c.time);
+
+// Service en cours : avant 6h du matin, on est encore dans le service de la veille.
+export const serviceToday = () => {
+  const now = new Date();
+  return serviceOf(todayISO(), now.toTimeString().slice(0, 5));
+};
+
+// Ordre chronologique réel (20h… 23h59, puis 0h… 3h du lendemain).
+const byTime = (a, b) => (a.date + a.time).localeCompare(b.date + b.time);
 
 export function controlsOf(date, user, type = state.type) {
-  return state.controls.filter(c => c.date === date && c.user === user && typeOf(c) === type).sort(byTime);
+  return state.controls.filter(c => svc(c) === date && c.user === user && typeOf(c) === type).sort(byTime);
 }
 
 export function clearControls(date, user, type = state.type) {
@@ -155,9 +177,9 @@ export function clearControls(date, user, type = state.type) {
 }
 
 export const controlsOfAll = (date, type = state.type) =>
-  state.controls.filter(c => c.date === date && typeOf(c) === type).sort(byTime);
+  state.controls.filter(c => svc(c) === date && typeOf(c) === type).sort(byTime);
 
-const datesDesc = list => [...new Set(list.map(c => c.date))].sort().reverse();
+const datesDesc = list => [...new Set(list.map(svc))].sort().reverse();
 
 export const datesOfAll = (type = state.type) => datesDesc(state.controls.filter(c => typeOf(c) === type));
 

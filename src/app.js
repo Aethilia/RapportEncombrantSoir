@@ -197,15 +197,21 @@ function renderTypePicker() {
     `<main class="pull">${card('enc', 'box')}${card('om', 'trash')}</main>`;
 }
 
+// Après minuit, on reste sur le service commencé la veille au soir.
+function serviceLabel() {
+  const svc = store.serviceToday();
+  return svc === store.todayISO() ? longDate(new Date()) : `Service du ${longDate(isoToDate(svc)).toLowerCase()} (nuit)`;
+}
+
 function renderHome() {
   const s = store.get();
-  const list = store.controlsOf(store.todayISO(), s.currentUser);
+  const list = store.controlsOf(store.serviceToday(), s.currentUser);
   const last = list.length ? list[list.length - 1].time.replace(':', 'h') : '—';
-  app.innerHTML = hero(`<div class="greet"><small>${greeting()}</small><h1>${esc(s.currentUser)}</h1><div class="date">${longDate(new Date())}</div></div>`) +
+  app.innerHTML = hero(`<div class="greet"><small>${greeting()}</small><h1>${esc(s.currentUser)}</h1><div class="date">${serviceLabel()}</div></div>`) +
     `<main class="pull">
-      <div class="stats"><div class="card stat"><b>${list.length}</b><span>contrôle${list.length > 1 ? 's' : ''} aujourd’hui</span></div>
+      <div class="stats"><div class="card stat"><b>${list.length}</b><span>contrôle${list.length > 1 ? 's' : ''} ce soir</span></div>
         <div class="card stat"><b>${last}</b><span>dernier contrôle</span></div></div>
-      <div class="section-title"><span>Contrôles du jour</span></div>
+      <div class="section-title"><span>Contrôles du soir</span></div>
       <div class="list">${list.map(c => controlCard(c)).join('') || `<div class="card empty">${ic('inbox', 34)}<div>Aucun contrôle pour le moment</div></div>`}</div>
       <button class="btn end" data-act="finish" ${list.length ? '' : 'disabled'}>${ic('download', 20)}Fin &amp; générer l’Excel</button>
     </main>
@@ -214,12 +220,12 @@ function renderHome() {
 
 function renderHistory() {
   const s = store.get();
-  const today = store.todayISO();
+  const today = store.serviceToday();
   const dates = histAll ? store.datesOfAll() : store.datesOf(s.currentUser);
   const body = dates.map(date => {
     const list = histAll ? store.controlsOfAll(date) : store.controlsOf(date, s.currentUser);
     const d = isoToDate(date);
-    const label = date === today ? 'Aujourd’hui' : longDate(d);
+    const label = date === today ? 'Ce soir' : longDate(d);
     return `<details class="card day" data-day="${date}" ${openDays.has(date) ? 'open' : ''}><summary>
         <div class="day-badge"><b>${d.getDate()}</b><small>${d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')}</small></div>
         <div><div class="day-title">${esc(label)}</div><div class="day-sub">${list.length} contrôle${list.length > 1 ? 's' : ''}</div></div>${ic('chev', 20).replace('class="ic"', 'class="ic chev"')}</summary>
@@ -315,7 +321,8 @@ function saveWizard() {
   const w = wizard;
   store.addControl({ date: w.date, time: w.time, address: w.address, num: w.num, operation: w.operation, conclusion: w.conclusion }, w.photos);
   wizard = null;
-  toast(w.date !== store.todayISO() ? `Contrôle enregistré le ${frShort(w.date)} (voir Historique)` : 'Contrôle enregistré');
+  const svcDate = store.serviceOf(w.date, w.time);
+  toast(svcDate !== store.serviceToday() ? `Contrôle enregistré dans le service du ${frShort(svcDate)} (voir Historique)` : 'Contrôle enregistré');
   navigator.vibrate?.(60);
   render();
 }
@@ -402,9 +409,10 @@ function saveEdit(id) {
   const before = store.get().controls.find(c => String(c.id) === String(id));
   store.updateControl(id, patch);
   editCtrl = null;
-  if (before && before.date !== patch.date) openDays.add(patch.date);
-  toast(before && before.date !== patch.date && tab === 'home' && patch.date !== store.todayISO()
-    ? `Contrôle déplacé au ${frShort(patch.date)} (voir Historique)` : 'Contrôle modifié');
+  const was = before && store.serviceOf(before.date, before.time), now = store.serviceOf(patch.date, patch.time);
+  if (was && was !== now) openDays.add(now);
+  toast(was && was !== now && tab === 'home' && now !== store.serviceToday()
+    ? `Contrôle déplacé au service du ${frShort(now)} (voir Historique)` : 'Contrôle modifié');
   render();
 }
 
@@ -427,7 +435,7 @@ function syncWizardInputs() {
 }
 
 /* ---------- Fin : génération du fichier Excel ---------- */
-async function generateReport(date = store.todayISO()) {
+async function generateReport(date = store.serviceToday()) {
   const { currentUser, type } = store.get();
   const controls = store.controlsOf(date, currentUser);
   if (!controls.length) return toast(`Aucun contrôle le ${frDate(date)}`);

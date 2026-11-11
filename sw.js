@@ -1,4 +1,4 @@
-const CACHE = 'encombrants-v15';
+const CACHE = 'encombrants-v16';
 const FILES = ['./', 'index.html', 'style.css', 'src/app.js', 'src/store.js', 'src/export.js', 'src/sync.js', 'src/photos.js', 'src/voice.js', 'src/streets.js', 'src/firebase-config.js',
   'vendor/exceljs.min.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo.png'];
 
